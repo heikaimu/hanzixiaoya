@@ -1,0 +1,191 @@
+(async () => {
+  const L=window.Learning, P=window.ProgressStorage;
+  const $=s=>document.querySelector(s), dialog=$('#dialog');
+  $('#content').innerHTML='<div class="empty">正在恢复学习进度…</div>';
+  let state=await P.initialize(), view='today', filter='all', book='all', search='', queue=[], phase='', selected=new Set(), practice=null;
+  let key=L.dateKey(); let day=L.plan(state,key);
+  function save(){if(!P.save(state))toast('本地保存失败，请检查云端保存状态或导出备份。');updateStorageStatus();}
+  function storageLabel(info=P.info()){
+    if(info.mode==='saved')return info.localOK?'● 云端已保存':'● 云端已保存 · 本地不可用';
+    if(!info.localOK)return '● 本地保存失败';
+    return {local:info.configured?'● 本地已保存 · 登录同步':'● 本地已保存',loading:'● 正在恢复云端进度',pending:'● 本地已保存 · 待同步',syncing:'● 正在保存到云端',offline:'● 本地已保存 · 待联网',error:'● 本地已保存 · 同步未完成',conflict:'● 进度冲突 · 请处理'}[info.mode]||'● 本地已保存';
+  }
+  function updateStorageStatus(){
+    const info=P.info();$('.local-badge').textContent=storageLabel(info);$('.local-badge').title=info.message||'';
+    const entry=$('#account-entry');entry.textContent=info.user&&!info.needsLogin?info.user.username:'登录 / 注册';entry.dataset.action=info.user&&!info.needsLogin?'cloud-account':'cloud-auth';entry.disabled=!info.configured||info.loading;entry.title=info.user?info.user.username:info.configured?'登录家长账号，长期保存学习进度':'云端服务尚未配置';
+    $('#content').inert=Boolean(info.loading);$('#content').setAttribute('aria-busy',String(info.loading));
+    if($('#cloud-section'))$('#cloud-section').innerHTML=cloudPanel();
+  }
+  function toast(message){$('#toast').textContent=message;$('#toast').classList.add('show');setTimeout(()=>$('#toast').classList.remove('show'),3200);}
+  function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function info(c){return L.chars.find(x=>x.char===c);}
+  function count(){return [...day.fresh,...day.review].filter(c=>(day.passes[c]||0)>=2).length;}
+  function streak(){let n=0,d=day.done?key:L.addDays(key,-1);while(state.days[d]?.done){n++;d=L.addDays(d,-1);}return n;}
+  function totalKnown(){return new Set([...Object.keys(state.records),...day.fresh.filter(c=>(day.passes[c]||0)>=2)]).size;}
+  function dateLabel(){return new Date(key+'T12:00:00').toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'});}
+  function rollover(){const now=L.dateKey();if(now!==key){key=now;day=L.plan(state,key);queue=[];dialog.close();save();render();toast('新的一天开始了，今日任务已更新。');}}
+  function open(html){$('#dialog-content').innerHTML='<div class="modal">'+html+'</div>';if(!dialog.open)dialog.showModal();}
+  function head(title){return `<div class="modal-head"><h2>${title}</h2><button class="close" data-action="close" aria-label="关闭">×</button></div>`;}
+  function speech(text){if(!('speechSynthesis' in window)){toast('当前浏览器不支持朗读，请由家长示范。');return;}speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='zh-CN';u.rate=.75;u.onerror=()=>toast('朗读未能播放，请由家长示范。');speechSynthesis.speak(u);}
+  function render(){
+    $('#daily-target').textContent='每天 '+L.dailyCount(state)+' 个字';
+    $('#breadcrumb').textContent='学习空间 / '+({today:'今日学习',library:'我的汉字库',history:'成长记录'}[view]);
+    document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
+    const welcome=`<section class="welcome"><div><div class="eyebrow">GROW A LITTLE, EVERY DAY</div><h1>${view==='today'?'你好，小小识字家 <em>☀</em>':view==='library'?'每一个字，都是新朋友':'看，小芽在长大 🌱'}</h1><p>${view==='today'?'不着急，一个字一个字，把世界读给自己听。':view==='library'?'从第一次见面，到熟悉地读出来。':'把每天的小小努力，变成看得见的成长。'}</p><span class="curriculum-label">${L.curriculum.name} · ${L.chars.length} 字 · 按课次学习</span></div><span class="date">◷ ${dateLabel()}</span></section>`;
+    if(view==='today')renderToday(welcome);else if(view==='library')renderLibrary(welcome);else renderHistory(welcome);
+  }
+  function renderToday(welcome){
+    const total=day.fresh.length+day.review.length,passed=count(), sentences=L.requiredSentences(state,day);
+    const cards=day.fresh.map(c=>{const x=info(c),done=(day.passes[c]||0)>=2;return `<button class="char-card" data-char="${c}"><span class="char-tag">${done?'✓ 已过关':'今日新字'}</span><div class="char-pinyin">${x.pinyin}</div><div class="hanzi">${c}</div><div class="char-word">${x.word}</div><div class="char-source" title="${esc(x.lesson)}">${x.semester} · 第${x.unit}单元</div><div class="char-bottom"><span>${done?'认识你啦':'点击认识它'}</span><span>↗</span></div></button>`;}).join('');
+    $('#content').innerHTML=welcome+assessmentBanner()+`<section class="hero"><div class="hero-copy"><span class="pill">🌿 每日识字小计划</span><h2>${day.done?'今天的识字小脚印，完成啦！':'每天 '+(day.target||L.dailyCount(state))+' 个字，<br>长出一点新本领。'}</h2><p>${day.done?'新字、旧字和句子都过关了，好好休息吧。':'认识新朋友，也别忘了和老朋友打个招呼。'}</p><button class="primary" data-action="start">${day.done?'再练一练':Object.keys(day.passes).length?'继续今日学习':'开始今日学习'} <span>→</span></button></div><div class="hero-art" aria-hidden="true"><div class="sun"></div><div class="hill"></div><div class="hill two"></div><div class="art-card">木</div><div class="art-card two">林</div><div class="art-sprout">🌱</div></div></section>
+    <section class="stats"><div class="stat"><div class="stat-icon">✧</div><div><div class="stat-label">已经认识的汉字</div><div class="stat-number">${totalKnown()}<small>个小伙伴</small></div></div></div><div class="stat"><div class="stat-icon">⚑</div><div><div class="stat-label">连续学习</div><div class="stat-number">${streak()}<small>天</small></div></div></div><div class="stat"><div class="stat-icon">✓</div><div><div class="stat-label">今日汉字进度</div><div class="stat-number">${passed}<small>/ ${total} 字过关</small></div></div></div></section>
+    <section><div class="section-heading"><h2>今天的新朋友 <small>今日 ${day.fresh.length} 个，慢慢认识</small></h2><button class="text-button" data-action="learn-all">先听一听 ↗</button></div><div class="new-grid">${cards||'<div class="empty">'+L.chars.length+' 个字都学过啦！继续巩固旧字吧。</div>'}</div></section>
+    <section class="lower-grid"><div class="panel"><h3>和老朋友打个招呼 <span>温故知新 ↻</span></h3><p>${day.review.length?'这些字到复习时间了，再认一认吧。':'还没有到期的旧字，可以在家长设置中添加已认识的字。'}</p><div class="review-chips">${day.review.slice(0,12).map(c=>`<button class="chip" data-char="${c}">${c}</button>`).join('')||'<span class="empty">新朋友会在明天来和你重逢 🌿</span>'}</div><div class="panel-bottom"><span>今日待巩固 ${day.review.length} 个字${day.review.length>12?' · 点击开始练习全部':''}</span><button class="text-button" data-action="start">去复习 →</button></div></div>
+    <div class="panel"><h3>把汉字连成小故事 <span>句子认读 ✧</span></h3><p>会认的字，连起来就有了新的意思。</p><div class="sentence-preview">${sentences[0]||'学会更多字，就能解锁小句子 🌱'}</div><div class="panel-bottom"><span>${sentences.length?'已解锁 '+sentences.length+' 句 · 今日认读':'只用已经认识的字组成句子'}</span><button class="text-button" data-action="sentence">读一读 →</button></div></div></section>${day.done?'<div class="completion-banner">✓ 今日全部过关 · 明天计划认识 '+L.dailyCount(state)+' 个新朋友</div>':''}`;
+  }
+  function renderLibrary(welcome){
+    const known=new Set([...Object.keys(state.records),...day.fresh.filter(c=>(day.passes[c]||0)>=2)]);
+    const scoped=L.chars.filter(x=>book==='all'||x.semester===book),knownCount=scoped.filter(x=>known.has(x.char)).length;
+    const items=scoped.filter(x=>(!search||x.char.includes(search)||x.pinyin.includes(search)||x.word.includes(search)||x.lesson.includes(search))&&(filter==='all'||(filter==='known'?known.has(x.char):!known.has(x.char))));
+    $('#content').innerHTML=welcome+`<div class="library-toolbar"><input id="search" placeholder="搜索汉字、拼音、词语或课名" aria-label="搜索汉字" value="${esc(search)}"><select id="book-filter" aria-label="选择教材册别"><option value="all" ${book==='all'?'selected':''}>上下册 · ${L.chars.length} 字</option>${L.curriculum.semesters.map(s=>`<option value="${s.name}" ${book===s.name?'selected':''}>一年级${s.name} · ${s.count} 字</option>`).join('')}</select>${[['all','全部 '+scoped.length],['known','已认识 '+knownCount],['new','待认识 '+(scoped.length-knownCount)]].map(([f,t])=>`<button class="filter ${filter===f?'active':''}" data-filter="${f}">${t}</button>`).join('')}</div><p class="library-note">${L.curriculum.edition} · 识字表（会认字），含语文园地 · 按教材首次出现顺序排列</p><div class="library-grid">${items.map(x=>`<button class="library-cell ${known.has(x.char)?'known':''}" data-char="${x.char}" title="一年级${x.semester} · 第${x.unit}单元 · ${esc(x.lesson)}"><div class="hanzi">${x.char}</div><small>${known.has(x.char)?'✓ 已认识':x.pinyin}</small><small>${x.semester} · 第${x.unit}单元</small></button>`).join('')}</div>${items.length?'':'<div class="empty">没有找到这个字。</div>'}`;
+  }
+  function renderHistory(welcome){const days=Object.entries(state.days).sort((a,b)=>b[0].localeCompare(a[0]));$('#content').innerHTML=welcome+`<div class="panel"><h3>你的识字旅程 <span>累计完成 ${days.filter(([,d])=>d.done).length} 天</span></h3><p>完成认读后，小芽就会留下一个成长脚印。</p></div>`+days.map(([d,v])=>`<div class="history-row"><div><b>${d}</b><small>新字 ${v.fresh.join('、')||'字库已学完'} · 复习 ${v.review.length} 字 · 句子 ${v.sentencePasses.length} 句</small></div><span style="color:${v.done?'#67834f':'#ae9b72'}">${v.done?'🌱 全部过关':'◷ '+(d===key?'继续努力':'当日未完成')}</span></div>`).join('');}
+  function assessmentBanner(){
+    const a=state.assessment,active=a&&!a.completed;
+    return `<section class="assessment-banner"><div><b>${a?.completed?'初始识字检查已完成':active?'识字检查进行中':'先看看，你已经认识哪些字？'}</b><p>${a?.completed?'字库内已会 '+a.answers.filter(Boolean).length+' / '+L.chars.length+' 字 · '+(a.applied?'已用于安排学习':'将于 '+a.effective+' 用于安排学习'):active?'已检查 '+a.answers.length+' / '+L.chars.length+' 字，可以随时继续。':'逐个检查字库里的 '+L.chars.length+' 个字，让每日学习从孩子的起点开始。'}</p></div><button class="secondary" data-action="${a?.completed?'assessment-result':'assessment'}">${a?.completed?'查看结果':active?'继续检查 →':'开始识字检查 →'}</button></section>`;
+  }
+  function assessmentIntro(){
+    rollover();const a=state.assessment;
+    if(a&&!a.completed){assessmentCard();return;}
+    open(head('初始识字检查')+`<p>把字库里的 ${L.chars.length} 个汉字逐个过一遍，找到孩子的学习起点。</p><div class="setting-note">只展示汉字，不展示拼音、词语或读音。请让孩子独立读，再由家长选择“已经会”或“还不会”。不确定时选“还不会”。</div><p>不用一次做完：每检查一个字都会保存，关闭后可以继续，也可以返回上一字修改。</p><p>${a?.completed?'重新检查完成后，将用新结果更新已认识的字。':'检查完成后，已会的字进入复习，未会的字每天学习 '+L.dailyCount(state)+' 个。'}如果今日已经开始学习，结果从明天生效。</p><div class="modal-actions"><button class="primary" data-action="assessment-begin">${a?.completed?'重新检查全部汉字':'开始检查第一个字'} →</button></div>`);
+  }
+  function assessmentBegin(){rollover();L.startAssessment(state,key);queue=[];save();render();assessmentCard();}
+  function assessmentCard(){
+    const a=state.assessment;if(!a||a.completed)return;
+    const n=a.answers.length,known=a.answers.filter(Boolean).length;
+    if(n===L.chars.length){open(head('全部汉字检查完啦')+`<div class="success-art">🌱</div><h2 class="success-title">已会 ${known} 个，还有 ${L.chars.length-known} 个新朋友</h2><p class="fine-print">这是当前字库内的识字情况，共检查 ${L.chars.length} 字。<br>确认后，结果会用于安排新字和复习。</p><div class="modal-actions"><button class="secondary" data-action="assessment-back">返回上一字</button><button class="primary" data-action="assessment-finish">确认结果，安排学习</button></div>`);return;}
+    open(head('初始识字检查')+`<div class="progress-track"><i style="width:${n/L.chars.length*100}%"></i></div><p class="assessment-status">已检查 ${n} / ${L.chars.length} 字 · 已会 ${known} 字</p><div class="recognition"><div class="round-label">第 ${n+1} / ${L.chars.length} 字</div><div class="hanzi">${L.chars[n].char}</div></div><div class="modal-actions"><button class="secondary" data-action="assessment-no">还不会 / 不确定</button><button class="primary" data-action="assessment-yes">✓ 家长确认：已经会</button></div><p class="fine-print">请孩子独立认读，不提示答案。<br>检查进度自动保存，随时可以关闭休息。</p><div class="assessment-controls"><button class="text-button" data-action="assessment-back" ${n?'':'disabled'}>← 返回上一字</button><button class="text-button" data-action="close">暂停检查</button></div>`);
+  }
+  function assessmentAnswer(known){rollover();if(L.answerAssessment(state,known)){save();render();assessmentCard();}}
+  function assessmentFinish(){rollover();if(!L.finishAssessment(state,key))return;day=L.plan(state,key);save();render();assessmentResult();}
+  function assessmentResult(){
+    const a=state.assessment;if(!a?.completed)return;
+    const known=L.chars.filter((x,i)=>a.answers[i]),unknown=L.chars.filter((x,i)=>!a.answers[i]);
+    open(head('初始识字检查结果')+`<p>检查日期：${a.completed} · 共 ${L.chars.length} 字（当前字库范围）</p><div class="setting-note"><b>已会 ${known.length} 字 · 还不会 ${unknown.length} 字</b><p>${a.applied?'结果已保存，已会的字进入复习，未会的字按每天 '+L.dailyCount(state)+' 个安排。':'今天的学习任务保留，检查结果从 '+a.effective+' 起生效。'}</p></div><h3>已经会的字</h3><div class="settings-grid">${known.map(x=>'<span class="select-char selected">'+x.char+'</span>').join('')||'<p>暂时还没有，慢慢学习就会越来越多。</p>'}</div><h3>还不会的字</h3><div class="settings-grid">${unknown.map(x=>'<span class="select-char">'+x.char+'</span>').join('')||'<p>全部认识了，真棒！接下来继续巩固。</p>'}</div><div class="modal-actions"><button class="secondary" data-action="assessment">重新检查</button><button class="primary" data-action="close">完成</button></div>`);
+  }
+  function showChar(c){const x=info(c);if(!x)return;open(head('认识一个新朋友')+`<div class="study-char"><div class="char-pinyin">${x.pinyin}</div><div class="hanzi">${c}</div><div class="study-word">${x.word}</div></div><p class="fine-print">一年级${x.semester} · 第${x.unit}单元 · ${x.lesson} · 第${x.page}页</p>${x.otherReadings?.length?'<div class="other-readings"><b>教材中的其他读音</b>'+x.otherReadings.map(r=>'<p>'+r.pinyin+' · '+r.word+' <button class="text-button" data-speak="'+r.word+'">♫ 听词语</button></p>').join('')+'</div>':''}<p class="fine-print">先听读音，再和家长一起读一遍。</p><div class="modal-actions"><button class="secondary" data-speak="${c+'，'+x.word}">♫ 听一听</button><button class="primary" data-action="close">认识你啦</button></div>`);}
+  function introduction(){open(head('先和新朋友见个面')+`<p>点一个字听一听，和家长一起读。准备好后，把拼音藏起来试试看。</p><div class="review-chips">${day.fresh.map(c=>`<button class="chip" data-speak="${c+'，'+info(c).word}">${c}</button>`).join('')}</div><p class="fine-print">${day.review.length?'还有 '+day.review.length+' 个旧字要复习。<br>':''}请家长听孩子独立认读，再确认答案。每个字需要连续认对两轮。</p><div class="modal-actions"><button class="primary" data-action="begin">准备好了，开始认读 →</button></div>`);}
+  function begin(){queue=[...day.fresh,...day.review].filter(c=>(day.passes[c]||0)<2).sort(()=>Math.random()-.5);phase='char';next();}
+  function next(){
+    if(phase==='char'&&!queue.length){phase='sentence';queue=L.requiredSentences(state,day).filter(s=>!day.sentencePasses.includes(s));}
+    if(!queue.length){if(L.complete(state,key)){save();render();success();}else toast('还有认读任务未完成，请继续练习。');return;}
+    const c=queue[0],isChar=phase==='char';
+    open(head(isChar?'读给家长听':'把汉字读成一句话')+`<div class="progress-track"><i style="width:${(count()/Math.max(1,day.fresh.length+day.review.length))*100}%"></i></div><p>${isChar?'把答案藏起来，自己试着读。':'每个字都认识了，试着连起来读出意思。'}</p><div class="recognition"><div class="round-label">${isChar?(day.fresh.includes(c)?'新字':'复习')+' · 第 '+((day.passes[c]||0)+1)+' 轮':'句子认读'}</div><div class="${isChar?'hanzi':'sentence'}">${c}</div></div><div id="hint-slot"></div><div class="modal-actions"><button class="secondary" data-action="wrong">还不熟，再学一下</button><button class="primary" data-action="right">✓ 家长确认：读对了</button></div><div class="fine-print">不提示拼音、不先播放读音，独立认读才算过关。<br>${isChar?'已过关 '+count()+' / '+(day.fresh.length+day.review.length)+' 字':'未完成 '+queue.length+' 句'}</div>`);
+  }
+  function answer(right){if(!queue.length)return;rollover();if(!queue.length)return;const c=queue.shift();
+    if(phase==='char'){
+      day.passes[c]=right?(day.passes[c]||0)+1:0;
+      if(!right){day.failed=day.failed||{};day.failed[c]=true;}
+      if(day.passes[c]<2)queue.push(c);
+    }else if(right){if(!day.sentencePasses.includes(c))day.sentencePasses.push(c);}else queue.push(c);
+    save();render();
+    if(!right){const x=phase==='char'?info(c):null;open(head('没关系，再认识一次')+`<div class="study-char">${x?'<div class="char-pinyin">'+x.pinyin+'</div><div class="hanzi">'+c+'</div><div class="study-word">'+x.word+'</div>':'<div class="sentence-preview">'+c+'</div>'}</div><p class="fine-print">听一听、读一读，稍后我们会再遇见它。${x?'这个字会重新开始两轮认读。':''}</p><div class="modal-actions"><button class="secondary" data-speak="${x?c+'，'+x.word:c}">♫ 听一听</button><button class="primary" data-action="next">继续练习 →</button></div>`);}else next();
+  }
+  function success(){open(head('今日学习完成')+`<div class="success-art">🌱</div><h2 class="success-title">小小的你，又长大了一点！</h2><p class="fine-print">${day.fresh.length} 个新字 · ${day.review.length} 个复习字 · ${day.sentencePasses.length} 句小句子<br>全部独立认读过关。明天再来吧！</p><div class="modal-actions"><button class="primary" data-action="close">收好今天的小成就 ✓</button></div>`);}
+  function start(){rollover();if(day.done){open(head('今天已经全部过关')+'<p>还可以再次测试今天的新字、复习字和小句子。本次测试不计入学习进度，也不会改变复习安排。</p><div class="modal-actions"><button class="secondary" data-action="library">去汉字库</button><button class="primary" data-action="practice-begin">再次测试 →</button></div>');}else introduction();}
+  function practiceBegin(){
+    rollover();if(!day.done){start();return;}
+    const chars=[...new Set([...day.fresh,...day.review])].sort(()=>Math.random()-.5);
+    const items=[...chars.map(text=>({text,isChar:true})),...L.requiredSentences(state,day).map(text=>({text,isChar:false}))];
+    practice={key,queue:items,total:items.length,passed:0,mistakes:new Set()};practiceNext();
+  }
+  function practiceNext(){
+    if(!practice)return;
+    if(practice.key!==L.dateKey()){practice=null;rollover();return;}
+    if(!practice.queue.length){
+      open(head('再次测试完成')+`<div class="success-art">🌱</div><h2 class="success-title">又练习了一遍，真棒！</h2><p>已完成 ${practice.total} 项认读${practice.mistakes.size?'，其中 '+practice.mistakes.size+' 项经过再次练习后读对了':'，全部一次读对'}。</p><p class="fine-print">本次测试未计入学习进度，今日成绩和复习安排保持不变。</p><div class="modal-actions"><button class="secondary" data-action="close">完成</button><button class="primary" data-action="practice-begin">再测一次 →</button></div>`);practice=null;return;
+    }
+    const item=practice.queue[0];
+    open(head('再次测试 · '+(item.isChar?'汉字认读':'句子认读'))+`<p class="fine-print">仅用于巩固，不计入学习进度。请先独立读给家长听。</p><div class="progress-track"><i style="width:${practice.passed/Math.max(1,practice.total)*100}%"></i></div><div class="recognition"><div class="round-label">${item.isChar?(day.fresh.includes(item.text)?'今日新字':'今日复习字'):'今天的小句子'}</div><div class="${item.isChar?'hanzi':'sentence'}">${item.text}</div></div><div class="modal-actions"><button class="secondary" data-action="practice-wrong">还不熟，再学一下</button><button class="primary" data-action="practice-right">✓ 家长确认：读对了</button></div><p class="fine-print">已完成 ${practice.passed} / ${practice.total} 项</p>`);
+  }
+  function practiceAnswer(right){
+    if(!practice?.queue.length)return;
+    if(practice.key!==L.dateKey()){practice=null;rollover();return;}
+    const item=practice.queue.shift();
+    if(right){practice.passed++;practiceNext();return;}
+    practice.mistakes.add(item.text);practice.queue.push(item);
+    const x=item.isChar?info(item.text):null;
+    open(head('没关系，再认识一次')+`<div class="study-char">${x?'<div class="char-pinyin">'+x.pinyin+'</div><div class="hanzi">'+item.text+'</div><div class="study-word">'+x.word+'</div>':'<div class="sentence-preview">'+item.text+'</div>'}</div><p class="fine-print">稍后会再测试这一项。本次答案不影响学习进度。</p><div class="modal-actions"><button class="secondary" data-speak="${x?item.text+'，'+x.word:item.text}">♫ 听一听</button><button class="primary" data-action="practice-next">继续测试 →</button></div>`);
+  }
+  function sentence(){if(count()<day.fresh.length+day.review.length){toast('先完成今天的汉字认读，再来读小句子。');start();return;}const ss=L.requiredSentences(state,day);if(!ss.length){toast('还没有能组成的句子。学会更多字就能解锁啦！');return;}if(day.done){open(head('今天的小句子')+ss.map(s=>`<p class="sentence-preview">${s}</p><button class="text-button" data-speak="${s}">♫ 听读音</button>`).join(''));return;}phase='sentence';queue=ss.filter(s=>!day.sentencePasses.includes(s));next();}
+  function settings(){
+    rollover();selected=new Set(Object.keys(state.records));const locked=L.dayStarted(day);
+    open(head('家长设置')+'<section id="cloud-section" class="setting-section cloud-section">'+cloudPanel()+'</section>'+`<section class="daily-settings"><h3>每天新学几个字？</h3><p>默认 5 个，可设置 1–${L.MAX_DAILY_COUNT} 个。复习字和句子会另外安排。</p><div class="daily-count-control"><label for="daily-count">每日新字</label><input id="daily-count" type="number" min="1" max="${L.MAX_DAILY_COUNT}" step="1" value="${L.dailyCount(state)}"><span>个</span></div><div class="daily-presets">${[3,5,10].map(n=>`<button class="filter" data-action="daily-preset" data-count="${n}">${n} 个${n===5?' · 默认':''}</button>`).join('')}</div><p>${locked?'今天已经开始学习，修改后从明天生效。':'今天还未开始认读，修改后立即调整今日新字。'}</p><button class="primary" data-action="save-daily-count">保存每日字数</button></section>`+assessmentBanner()+`<p>也可以直接选出孩子已经能独立认读的字。它们会加入复习，新字按每日设置的数量安排。</p><div class="setting-note">${locked?'今天已开始学习，已有字设置将在下一天生效；今天的任务保持不变。':'请只选择已经独立认识的字；选中的字今天会进行认读确认。'}</div><div class="settings-grid">${L.chars.map(x=>`<button class="select-char ${selected.has(x.char)?'selected':''}" data-select="${x.char}" aria-pressed="${selected.has(x.char)}">${x.char}</button>`).join('')}</div><div class="modal-actions"><button class="primary" data-action="save-known">保存已认识的字</button></div><div class="setting-section"><h3>重置识字数</h3><p>重新检查孩子的识字情况：清除已会汉字、识字检查和学习进度，保留每日新字数量。</p><button class="secondary warning" data-action="reset-literacy">重置识字数</button></div><div class="setting-section"><p>登录后学习记录会自动同步到云端；也可以导出 JSON 备份。</p><button class="secondary" data-action="export">导出进度</button><button class="secondary" data-action="import">导入进度</button><input type="file" id="import-file" accept="application/json" hidden><button class="text-button warning" data-action="reset">清空学习记录</button></div>`);
+  }
+  function cloudPanel(){
+    const info=P.info();
+    if(!info.configured)return '<h3>云端保存</h3><p>尚未配置云端服务。请按项目说明配置 Supabase 后重启网页服务；当前进度保存在本浏览器。</p>';
+    if(!info.user||info.needsLogin)return '<h3>长期保存学习进度</h3><p>输入用户名登录，将识字检查、认读进度和每日设置保存到云端。换设备后登录同一账号即可继续学习。</p>'+(info.message?'<p class="warning">'+esc(info.message)+'</p>':'')+'<button class="primary" data-action="cloud-auth">登录 / 注册家长账号</button>';
+    let html=`<h3>云端保存</h3><p class="cloud-account">${esc(info.user.username||'家长账号')}</p><p>${storageLabel(info)}${info.updatedAt?'<br>上次云端保存：'+new Date(info.updatedAt).toLocaleString('zh-CN'):''}</p>${info.message?'<p class="warning">'+esc(info.message)+'</p>':''}`;
+    if(info.conflict){
+      const remote=info.conflict.record?.state;
+      html+=`<div class="setting-note"><p>本机已认识 ${Object.keys(state.records).length} 字；云端已认识 ${Object.keys(remote?.records||{}).length} 字。选择前会在本机备份另一份进度。</p><button class="secondary" data-action="cloud-use-remote">使用云端进度</button><button class="secondary" data-action="cloud-use-local">保留本机进度并上传</button></div>`;
+    }
+    return html+`<div class="cloud-actions"><button class="secondary" data-action="cloud-sync" ${info.loading?'disabled':''}>立即同步</button><button class="text-button" data-action="cloud-signout">退出账号</button></div><p>退出后，本账号尚未同步的进度仍留在此浏览器，重新登录后会继续同步。退出会显示本机未登录时的学习进度。</p>`;
+  }
+  function authDialog(){
+    open(head('用户名和密码登录 / 注册')+'<p>使用用户名和密码保存和恢复孩子的识字进度，无需邮箱验证。注册新名字会保存本机当前进度，登录已有名字会恢复对应记录。</p><form id="cloud-auth-form"><label for="cloud-username">用户名</label><input id="cloud-username" type="text" autocomplete="username" maxlength="24" required placeholder="例如：小芽_2026"><p class="fine-print">1–24 个汉字、字母、数字或下划线，英文字母不区分大小写。</p><label for="cloud-password">密码</label><input id="cloud-password" type="password" autocomplete="current-password" minlength="8" required placeholder="至少 8 位"><p id="cloud-auth-error" class="warning" role="alert"></p><div class="modal-actions"><button class="secondary" type="submit" name="intent" value="signup">注册账号</button><button class="primary" type="submit" name="intent" value="signin">登录账号</button></div></form><p class="fine-print">请记住用户名和密码。密码不会保存在浏览器中。</p>');
+  }
+  async function accountAction(action){
+    try{
+      if(action==='cloud-sync')await P.refresh();
+      if(action==='cloud-signout')await P.signOut();
+      if(action==='cloud-use-remote')await P.resolve('cloud');
+      if(action==='cloud-use-local')await P.resolve('local');
+      if(dialog.open&&action!=='cloud-signout')updateStorageStatus();
+      if(action==='cloud-signout'){dialog.close();toast('已退出账号，本账号进度保留在本机缓存中。');}
+    }catch(e){toast(e.message||'操作未完成，请稍后重试。');}
+  }
+  function saveDailyCount(){
+    const n=Number($('#daily-count').value);rollover();const locked=L.dayStarted(day);
+    if(!L.setDailyCount(state,n,key)){toast('请输入 1 到 '+L.MAX_DAILY_COUNT+' 之间的整数。');return;}
+    day=L.plan(state,key);save();render();dialog.close();toast('每天新学 '+n+' 个字，'+(locked?'从明天生效。':'今日计划已调整。'));
+  }
+  function saveKnown(){const locked=L.dayStarted(day);for(const c of selected){if(!state.records[c])state.records[c]={level:0,due:locked?L.addDays(key,1):key,learned:key};}for(const c of Object.keys(state.records)){if(!selected.has(c)&&(!locked||![...day.fresh,...day.review].includes(c)))delete state.records[c];}if(!locked){delete state.days[key];day=L.plan(state,key);}save();dialog.close();render();toast('已保存。新字和复习计划已安排好。');}
+  const valid=L.validState;
+  document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.view){view=b.dataset.view;render();return;}if(b.dataset.char){showChar(b.dataset.char);return;}if(b.dataset.speak){speech(b.dataset.speak);return;}if(b.dataset.filter){filter=b.dataset.filter;render();return;}if(b.dataset.select){const c=b.dataset.select;selected.has(c)?selected.delete(c):selected.add(c);b.classList.toggle('selected',selected.has(c));b.setAttribute('aria-pressed',selected.has(c));return;}
+    const action=b.dataset.action;switch(action){case 'cloud-account':settings();break;case 'cloud-auth':authDialog();break;case 'cloud-sync':case 'cloud-signout':case 'cloud-use-remote':case 'cloud-use-local':void accountAction(action);break;case 'save-daily-count':saveDailyCount();break;case 'daily-preset':$('#daily-count').value=b.dataset.count;break;case 'assessment':assessmentIntro();break;case 'assessment-begin':assessmentBegin();break;case 'assessment-yes':assessmentAnswer(true);break;case 'assessment-no':assessmentAnswer(false);break;case 'assessment-back':if(state.assessment?.answers.length&&!state.assessment.completed){state.assessment.answers.pop();save();assessmentCard();render();}break;case 'assessment-finish':assessmentFinish();break;case 'assessment-result':assessmentResult();break;case 'close':practice=null;dialog.close();break;case 'start':start();break;case 'practice-begin':practiceBegin();break;case 'practice-right':practiceAnswer(true);break;case 'practice-wrong':practiceAnswer(false);break;case 'practice-next':practiceNext();break;case 'learn-all':introduction();break;case 'begin':begin();break;case 'right':answer(true);break;case 'wrong':answer(false);break;case 'next':next();break;case 'sentence':sentence();break;case 'library':dialog.close();view='library';render();break;case 'save-known':saveKnown();break;case 'export':{const url=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='汉字小芽-'+key+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);break;}case 'import':$('#import-file').click();break;case 'reset-literacy':open(head('重置识字数？')+'<p>已认识的汉字将归零，并清除识字检查、复习进度和成长记录。每日新字数量会保留，今日任务将重新安排。'+(P.info().user?'重置也会同步到当前家长账号的云端记录。':'')+'</p><div class="modal-actions"><button class="secondary" data-action="cancel-reset-literacy">取消</button><button class="primary" data-action="confirm-reset-literacy">确认重置</button></div>');break;case 'cancel-reset-literacy':settings();break;case 'confirm-reset-literacy':key=L.dateKey();state=L.resetLiteracy(state);day=L.plan(state,key);queue=[];phase='';selected=new Set();pendingImport=null;save();dialog.close();render();toast('识字数已重置，可以重新进行识字检查。');break;case 'reset':open(head('清空学习记录？')+'<p>这会清空当前学习进度并恢复默认设置。'+(P.info().user?'清空也会同步到当前家长账号。':'')+'建议先导出备份。</p><div class="modal-actions"><button class="secondary" data-action="close">保留记录</button><button class="primary" data-action="confirm-reset">确认清空</button></div>');break;case 'confirm-reset':key=L.dateKey();state=L.empty();day=L.plan(state,key);queue=[];phase='';pendingImport=null;save();dialog.close();render();toast('记录已清空，可以重新开始。');break;}
+  });
+  document.addEventListener('input',e=>{if(e.target.id==='search'){search=e.target.value;const pos=e.target.selectionStart;render();$('#search').focus();$('#search').setSelectionRange(pos,pos);}});
+  let pendingImport=null;
+  document.addEventListener('submit',async e=>{
+    if(e.target.id!=='cloud-auth-form')return;e.preventDefault();
+    const form=e.target,username=form.querySelector('#cloud-username').value,password=form.querySelector('#cloud-password').value;
+    const intent=e.submitter?.value||'signin';
+    const buttons=[...form.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
+    const errorNode=form.querySelector('#cloud-auth-error');errorNode.textContent='正在连接账号…';
+    try{
+      if(intent==='signup')await P.signUp(username,password);else await P.signIn(username,password);
+      dialog.close();toast(P.info().mode==='saved'?'进度已恢复并保存到云端。':'用户名已打开，进度会自动同步。');
+    }catch(err){
+      errorNode.textContent=/用户名|密码|管理员|云端进度|注册未完成/.test(err.message||'')?err.message:err.code==='PGRST202'?'用户名功能尚未初始化，请先执行新的数据库脚本。':'暂时无法连接，请稍后再试。';
+    }finally{form.querySelector('#cloud-password').value='';buttons.forEach(b=>b.disabled=false);}
+  });
+  document.addEventListener('change',async e=>{if(e.target.id==='book-filter'){book=e.target.value;render();return;}if(e.target.id!=='import-file'||!e.target.files[0])return;try{const data=JSON.parse(await e.target.files[0].text());if(!valid(data))throw Error();pendingImport=data;open(head('恢复备份？')+'<p>导入将替换当前学习记录。'+(P.info().user?'替换后的进度也会同步到当前家长账号。':'')+'</p><div class="modal-actions"><button class="secondary" data-action="close">取消</button><button class="primary" id="confirm-import">确认恢复</button></div>');$('#confirm-import').onclick=()=>{state=pendingImport;day=L.plan(state,key);queue=[];save();dialog.close();render();toast('进度已恢复。');};}catch(err){toast('备份格式不正确，请使用本项目导出的 JSON 文件。');}});
+  $('#parent').onclick=settings;
+  $('#parent-mobile').onclick=settings;
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)rollover();});
+  setInterval(rollover,60000);
+  P.subscribe(({type,data})=>{
+    if(type==='data'){
+      state=data;key=L.dateKey();day=L.plan(state,key);queue=[];phase='';selected=new Set();pendingImport=null;
+      if(dialog.open)dialog.close();render();save();
+    }
+    updateStorageStatus();
+  });
+  P.start();
+  window.addEventListener('online',()=>void P.refresh());
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void P.refresh();});
+  setInterval(()=>{if(P.info().user&&P.info().dirty&&!P.info().conflict)void P.refresh();},30000);
+  save();render();updateStorageStatus();
+})();
