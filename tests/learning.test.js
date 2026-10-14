@@ -116,3 +116,16 @@ assert.equal(L.plan(reset,key).fresh.length,7);
 assert.equal(L.plan(reset,key).review.length,0);
 assert(s.records[first],'构造重置状态前不修改已有数据');
 console.log('PASS: 统编教材690字数据、初始检查、学习规则、每日数量和识字数重置');
+
+{
+ const s=L.empty(),d=L.plan(s,key);
+ assert.deepEqual(L.continueLearning(s,key),[],'未完成当前组不能继续');
+ const finish=()=>{for(const c of [...d.fresh,...d.review])d.passes[c]=2;d.sentencePasses=L.requiredSentences(s,d);assert(L.complete(s,key));};
+ finish();const firstRecords=JSON.stringify(s.records);const original={...s.records[d.fresh[0]]};
+ const added=L.continueLearning(s,key);assert.equal(added.length,5);assert.equal(d.fresh.length,10);assert.equal(d.done,false);
+ assert.equal(JSON.stringify(s.records),firstRecords,'开启新一组不改变已学记录');
+ assert(L.validState(JSON.parse(JSON.stringify(s))),'额外任务可恢复');finish();assert.deepEqual(s.records[d.fresh[0]],original,'旧字不重复升级');
+ assert.equal(Object.keys(s.records).length,10);assert.equal(Object.keys(s.days).length,1,'不提前增加日期');
+ const next=L.plan(s,L.addDays(key,1));assert.equal(next.review.length,10);assert(!next.fresh.some(c=>d.fresh.includes(c)));
+ for(let i=0;i<4;i++){L.continueLearning(s,key);finish();}assert.equal(d.fresh.length,30);assert(L.validState(s),'一天多组可超过20字');
+}
