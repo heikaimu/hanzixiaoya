@@ -48,7 +48,7 @@ d.sentencePasses=L.requiredSentences(s,d);
 assert(L.complete(s,key));
 const before=JSON.stringify(s.records);L.complete(s,key);assert.equal(JSON.stringify(s.records),before,'重复完成不应改变复习日期');
 s=L.empty();for(const x of L.chars)s.records[x.char]={level:0,due:key,learned:key};d=L.plan(s,key);
-assert.equal(d.fresh.length,0);assert.equal(d.review.length,690);
+assert.equal(d.fresh.length,0);assert.equal(d.review.length,10);
 assert.equal(L.addDays('2026-12-31',1),'2027-01-01');
 assert.equal(L.addDays('2028-02-28',1),'2028-02-29');
 s=L.empty();d=L.plan(s,key);
@@ -101,7 +101,7 @@ d.done=true;L.setDailyCount(s,2,key);assert.strictEqual(L.plan(s,key),d,'当天�
 assert.equal(L.plan(s,'2026-10-15').fresh.length,2);
 s=L.empty();L.setDailyCount(s,10,key);
 for(const x of L.chars.slice(0,L.chars.length-3))s.records[x.char]={level:0,due:key,learned:key};
-d=L.plan(s,key);assert.equal(d.fresh.length,3,'剩余未认识的字不足目标时只安排剩余字');assert.equal(d.review.length,L.chars.length-3,'每日新字设置不限制旧字复习');
+d=L.plan(s,key);assert.equal(d.fresh.length,3,'剩余未认识的字不足目标时只安排剩余字');assert.equal(d.review.length,10,'旧版数量设置的复习使用默认轻松上限');
 assert.equal(L.dailyCount({records:{},days:{}}),5,'没有设置时默认5');
 s=L.empty();L.setDailyCount(s,7,key);
 s.records[first]={level:2,due:key,learned:key};
@@ -128,4 +128,39 @@ console.log('PASS: 统编教材690字数据、初始检查、学习规则、每�
  assert.equal(Object.keys(s.records).length,10);assert.equal(Object.keys(s.days).length,1,'不提前增加日期');
  const next=L.plan(s,L.addDays(key,1));assert.equal(next.review.length,10);assert(!next.fresh.some(c=>d.fresh.includes(c)));
  for(let i=0;i<4;i++){L.continueLearning(s,key);finish();}assert.equal(d.fresh.length,30);assert(L.validState(s),'一天多组可超过20字');
+}
+
+{
+ const s=L.empty();
+ for(const x of L.chars.slice(0,8))s.records[x.char]={level:1,due:key,learned:'2026-10-01'};
+ const d=L.plan(s,key),[a,b,c]=d.review;
+ d.passes[a]=2;d.passes[b]=1;d.passes[c]=2;d.failed={[c]:true};
+ L.creditReview(s,key,[a,b,c,...d.fresh]);
+ assert.equal(s.records[a].due,L.addDays(key,7),'独立复习无需完成新字即可更新复习日期');
+ assert.equal(s.records[b].due,key,'未过关字仍到期待复习');
+ assert.equal(s.records[c].due,L.addDays(key,1),'答错字次日复习');
+ assert.equal(Object.keys(s.records).length,8,'复习不增加识字数');
+ assert(!d.done,'独立复习不冒充完成今日新字');
+ const record=JSON.stringify(s.records[a]);L.creditReview(s,key,[a]);
+ assert.equal(JSON.stringify(s.records[a]),record,'重复进入不会重复升级');
+ assert(L.validState(JSON.parse(JSON.stringify(s))),'复习进度支持保存恢复');
+ for(const ch of [...d.fresh,...d.review])d.passes[ch]=2;
+ d.sentencePasses=L.requiredSentences(s,d);assert(L.complete(s,key));
+ assert.equal(JSON.stringify(s.records[a]),record,'完成整日时不重复结算独立复习');
+ console.log('PASS: 独立复习、暂停保存、错字复习间隔和防重复结算');
+}
+
+{
+ for(const [value,fresh,review] of [['easy',5,10],['normal',10,20],['hard',20,40]]){
+  const s=L.empty();for(const x of L.chars.slice(0,60))s.records[x.char]={level:0,due:key,learned:key};
+  assert(L.setDifficulty(s,value,key));const d=L.plan(s,key);
+  assert.equal(d.fresh.length,fresh);assert.equal(d.review.length,review);
+  assert.equal(L.reviewCount(s),review);assert(L.validState(JSON.parse(JSON.stringify(s))));
+  d.passes[d.fresh[0]]=1;L.setDifficulty(s,'easy',key);
+  assert.strictEqual(L.plan(s,key),d,'切换难度保留已开始任务');
+  assert.equal(L.plan(s,L.addDays(key,1)).fresh.length,5);
+ }
+ assert.equal(L.difficulty(L.empty()),'easy');assert.equal(L.reviewCount({settings:{dailyNewCount:7}}),10);
+ assert(!L.setDifficulty(L.empty(),'invalid',key));
+ console.log('PASS: 三档难度、新字与复习上限、旧数据兼容和已开始任务保护');
 }
