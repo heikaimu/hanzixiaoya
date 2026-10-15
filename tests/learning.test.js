@@ -194,14 +194,14 @@ console.log('PASS: 统编教材690字数据、初始检查、学习规则、每�
  assert(available.length>=80,'前110字必须有足够的自然短句覆盖');
  assert(available.includes('我读书。'));assert(available.includes('学校开学了。'));
  assert(available.every(sentence=>[...sentence].every(c=>!/[\u4e00-\u9fff]/.test(c)||known.has(c))),'不能为了凑句数加入未学字');
- assert.equal(selected.length,3);assert.equal(new Set(selected).size,3);
+ assert.equal(selected.length,2);assert.equal(new Set(selected).size,2);
  assert.deepEqual(L.requiredSentences(s,d),selected,'同组重新渲染不改变句子');
  d.sentencePasses=[...selected];
  const tomorrow=L.plan(s,L.addDays(key,1));
  assert(L.requiredSentences(s,tomorrow).every(sentence=>!selected.includes(sentence)),'优先选择以往没有读过的句子');
  assert(L.validState(s),'新增句子学习记录可以保存恢复');
  assert.equal(new Set(L.sentences).size,L.sentences.length,'句库去重');
- console.log('PASS: 前110字句子覆盖、已学字约束、每组三句、避免重复和进度兼容');
+ console.log('PASS: 前110字句子覆盖、已学字约束、按难度安排句数、避免重复和进度兼容');
 }
 
 {
@@ -216,4 +216,22 @@ console.log('PASS: 统编教材690字数据、初始检查、学习规则、每�
  const legacy={sentencePasses:[selected[0]]};assert.equal(L.sentenceCount(legacy,selected[0]),2,'旧版已过关句子保持完成');
  d.sentenceCounts[selected[0]]=3;assert(!L.validState(s),'拒绝超过两次的句子计数');
  console.log('PASS: 句子两次过关、听后不计数、暂停恢复及旧记录兼容');
+}
+
+{
+ for(const [mode,expected] of [['easy',2],['normal',4],['hard',8]]){
+  const s=L.empty();for(const x of L.chars.slice(0,110))s.records[x.char]={level:0,due:L.addDays(key,1),learned:key};
+  L.setDifficulty(s,mode,key);const d=L.plan(s,key),before=JSON.stringify(s);
+  assert.equal(L.sentenceLimit(s),expected);assert.equal(L.requiredSentences(s,d).length,expected);
+  const review=L.sentenceReview(s,d,()=>0);
+  assert.equal(review.length,expected);assert.equal(new Set(review).size,expected);
+  assert(review.every(sentence=>L.eligible(s,d).includes(sentence)),'句子复习只用已学字');
+  assert.equal(JSON.stringify(s),before,'独立句子复习不修改新字任务和记录');
+  d.passes[d.fresh[0]]=1;L.setDifficulty(s,'hard',key);
+  assert.equal(L.requiredSentences(s,d).length,expected,'已开始学习的句子数量不被中途改变');
+  assert.equal(L.sentenceReview(s,d).length,8,'独立复习立即采用新难度');
+  assert(L.validState(JSON.parse(JSON.stringify(s))));
+ }
+ const s=L.empty(),d=L.plan(s,key);assert.deepEqual(L.sentenceReview(s,d),[],'没有可读句子时不生成未学内容');
+ console.log('PASS: 句子难度2/4/8、独立复习、数量不足和当前任务保护');
 }
