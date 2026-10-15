@@ -69,3 +69,7 @@ dialog.recognition-dialog{width:min(560px,calc(100% - 24px));max-width:calc(100v
 .history-actions span{font-size:12px}
 .history-actions button{font-size:12px;padding:10px 14px}
 @media(max-width:550px){.history-actions{width:100%;justify-content:space-between}}
+
+.stat:nth-child(3) .daily-progress-icon{background:#eceeeb;color:#a1a6a0}
+.stat:nth-child(3) .daily-progress-icon.is-complete{background:#48734f;color:#fff;box-shadow:0 0 0 4px #48734f18}
+@media(max-width:750px){.stat .daily-progress-icon{display:grid;width:30px;height:30px;font-size:17px;border-radius:9px;margin-bottom:8px}}
