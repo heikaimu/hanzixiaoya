@@ -27,7 +27,7 @@
   function totalKnown(){return new Set([...Object.keys(state.records),...day.fresh.filter(c=>(day.passes[c]||0)>=2)]).size;}
   function dateLabel(){return new Date(key+'T12:00:00').toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'});}
   function rollover(){const now=L.dateKey();if(now!==key){key=now;day=L.plan(state,key);queue=[];dialog.close();save();render();toast('新的一天开始了，今日任务已更新。');}}
-  function open(html){$('#dialog-content').innerHTML='<div class="modal">'+html+'</div>';if(!dialog.open)dialog.showModal();}
+  function open(html){dialog.classList.toggle('recognition-dialog',html.includes('class="recognition"'));$('#dialog-content').innerHTML='<div class="modal">'+html+'</div>';if(!dialog.open)dialog.showModal();}
   function head(title,withFont=false){return `<div class="modal-head"><h2>${title}</h2><div class="modal-head-actions">${withFont?`<label class="test-font-control">认读字体 <select id="reading-font"><option value="song" ${readingFont==='song'?'selected':''}>宋体</option><option value="yahei" ${readingFont==='yahei'?'selected':''}>微软雅黑</option></select></label>`:''}<button class="close" data-action="close" aria-label="关闭">×</button></div></div>`;}
   function speech(text,quiet=false){
     if(!('speechSynthesis' in window)){if(!quiet)toast('当前浏览器不支持朗读，请由家长示范。');return;}
