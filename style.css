@@ -61,3 +61,5 @@ dialog.recognition-dialog{width:min(560px,calc(100% - 24px));max-width:calc(100v
  .recognition-dialog .recognition .hanzi{font-size:clamp(96px,min(42vw,25dvh),128px)}
  .recognition-dialog .recognition .char-pinyin{font-size:20px}
 }
+
+.new-friends{margin-top:28px}
