@@ -133,7 +133,7 @@
       practice.queue=pending.length?pending.map(text=>({text,isChar:true})):practice.items.filter(x=>!x.isChar&&!practice.sentencePasses.includes(x.text));
     }
     if(!practice.queue.length){
-      open(head(practice.mode==='sentences'?'句子复习完成':'再次测试完成')+`<div class="progress-track"><i style="width:100%"></i></div><div class="success-art">🌱</div><h2 class="success-title">又练习了一遍，真棒！</h2><p>已完成 ${practice.total} 项认读${practice.mistakes.size?'，其中 '+practice.mistakes.size+' 项经过再次练习后读对了':'，全部一次读对'}。</p><p class="fine-print">本次测试未计入学习进度，今日成绩和复习安排保持不变。</p><div class="modal-actions"><button class="secondary" data-action="close">完成</button><button class="primary" data-action="${practice.mode==='sentences'?'review-sentences':practice.mode==='all'?'review-practice':'practice-begin'}">再测一次 →</button></div>`);practice=null;return;
+      open(head(practice.mode==='sentences'?'句子复习完成':'再次测试完成')+`<div class="progress-track"><i style="width:100%"></i></div><div class="success-art">🌱</div><h2 class="success-title">又练习了一遍，真棒！</h2><p class="practice-result">已完成 ${practice.total} 项认读${practice.mistakes.size?'，其中 '+practice.mistakes.size+' 项经过再次练习后读对了':'，全部一次读对'}。</p><p class="fine-print">本次测试未计入学习进度，今日成绩和复习安排保持不变。</p><div class="modal-actions"><button class="secondary" data-action="close">完成</button><button class="primary" data-action="${practice.mode==='sentences'?'review-sentences':practice.mode==='all'?'review-practice':'practice-begin'}">再测一次 →</button></div>`);practice=null;return;
     }
     const item=practice.queue[0];
     const sentenceRound=item.isChar?0:Math.min(1,...practice.items.filter(x=>!x.isChar).map(x=>L.sentenceCount(practice,x.text)));
