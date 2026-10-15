@@ -25,15 +25,17 @@ assert(L.chars.every(x=>/^[\u4e00-\u9fff]$/.test(x.char)&&/^[a-zāáǎàēéěè
 assert.strictEqual(L.plan(s,key),d,'每日计划不能在刷新时改变');
 assert.equal(L.complete(s,key),false);
 for(const c of d.fresh)d.passes[c]=1;
-assert.equal(L.complete(s,key),false,'必须完成两轮');
+assert.equal(L.complete(s,key),false,'必须完成三次');
 for(const c of d.fresh)d.passes[c]=2;
+assert.equal(L.complete(s,key),false,'认对两次仍未过关');
+for(const c of d.fresh)d.passes[c]=3;
 assert.equal(L.complete(s,key),true);
 assert.equal(s.records[first].due,'2026-10-15');
 let tomorrow=L.plan(s,'2026-10-15');
 assert.equal(tomorrow.fresh.length,5);
 assert.equal(tomorrow.review.length,5);
 assert(!tomorrow.fresh.some(c=>tomorrow.review.includes(c)));
-for(const c of [...tomorrow.fresh,...tomorrow.review])tomorrow.passes[c]=2;
+for(const c of [...tomorrow.fresh,...tomorrow.review])tomorrow.passes[c]=3;
 tomorrow.failed={[first]:true};
 assert(L.complete(s,'2026-10-15'));
 assert.equal(s.records[second].due,'2026-10-18');
@@ -42,7 +44,7 @@ s=L.empty();for(const c of ['山','上','有','水'])s.records[c]={level:0,due:k
 d=L.plan(s,key);
 assert(L.eligible(s,d).includes('山上有水。'));
 assert(!L.eligible(s,d).includes('我爱妈妈。'));
-for(const c of [...d.fresh,...d.review])d.passes[c]=2;
+for(const c of [...d.fresh,...d.review])d.passes[c]=3;
 assert(!L.complete(s,key),'句子也是当天过关条件');
 d.sentencePasses=L.requiredSentences(s,d);
 assert(L.complete(s,key));
@@ -120,7 +122,7 @@ console.log('PASS: 统编教材690字数据、初始检查、学习规则、每�
 {
  const s=L.empty(),d=L.plan(s,key);
  assert.deepEqual(L.continueLearning(s,key),[],'未完成当前组不能继续');
- const finish=()=>{for(const c of [...d.fresh,...d.review])d.passes[c]=2;d.sentencePasses=L.requiredSentences(s,d);assert(L.complete(s,key));};
+ const finish=()=>{for(const c of [...d.fresh,...d.review])d.passes[c]=3;d.sentencePasses=L.requiredSentences(s,d);assert(L.complete(s,key));};
  finish();const firstRecords=JSON.stringify(s.records);const original={...s.records[d.fresh[0]]};
  const added=L.continueLearning(s,key);assert.equal(added.length,5);assert.equal(d.fresh.length,10);assert.equal(d.done,false);
  assert.equal(JSON.stringify(s.records),firstRecords,'开启新一组不改变已学记录');
@@ -134,7 +136,7 @@ console.log('PASS: 统编教材690字数据、初始检查、学习规则、每�
  const s=L.empty();
  for(const x of L.chars.slice(0,8))s.records[x.char]={level:1,due:key,learned:'2026-10-01'};
  const d=L.plan(s,key),[a,b,c]=d.review;
- d.passes[a]=2;d.passes[b]=1;d.passes[c]=2;d.failed={[c]:true};
+ d.passes[a]=3;d.passes[b]=1;d.passes[c]=3;d.failed={[c]:true};
  L.creditReview(s,key,[a,b,c,...d.fresh]);
  assert.equal(s.records[a].due,L.addDays(key,7),'独立复习无需完成新字即可更新复习日期');
  assert.equal(s.records[b].due,key,'未过关字仍到期待复习');
@@ -144,7 +146,7 @@ console.log('PASS: 统编教材690字数据、初始检查、学习规则、每�
  const record=JSON.stringify(s.records[a]);L.creditReview(s,key,[a]);
  assert.equal(JSON.stringify(s.records[a]),record,'重复进入不会重复升级');
  assert(L.validState(JSON.parse(JSON.stringify(s))),'复习进度支持保存恢复');
- for(const ch of [...d.fresh,...d.review])d.passes[ch]=2;
+ for(const ch of [...d.fresh,...d.review])d.passes[ch]=3;
  d.sentencePasses=L.requiredSentences(s,d);assert(L.complete(s,key));
  assert.equal(JSON.stringify(s.records[a]),record,'完成整日时不重复结算独立复习');
  console.log('PASS: 独立复习、暂停保存、错字复习间隔和防重复结算');
@@ -163,4 +165,25 @@ console.log('PASS: 统编教材690字数据、初始检查、学习规则、每�
  assert.equal(L.difficulty(L.empty()),'easy');assert.equal(L.reviewCount({settings:{dailyNewCount:7}}),10);
  assert(!L.setDifficulty(L.empty(),'invalid',key));
  console.log('PASS: 三档难度、新字与复习上限、旧数据兼容和已开始任务保护');
+}
+
+{
+ const s=L.empty(),d=L.plan(s,key),group=[...d.fresh],random=()=>0;
+ assert.deepEqual(L.recognitionQueue(d,[...group].reverse(),random),group,'第一轮按教材原始顺序');
+ d.attempted=[group[0]];d.passes[group[0]]=0;
+ assert.deepEqual(L.recognitionQueue(d,group,random),group.slice(1),'听过并确认的字不插入第一轮剩余字');
+ const restored=JSON.parse(JSON.stringify(s));
+ assert.deepEqual(L.recognitionQueue(restored.days[key],group,random),group.slice(1),'刷新继续第一轮剩余顺序');
+ d.attempted=[...group];for(const c of group)d.passes[c]=1;
+ const round2=L.recognitionQueue(d,group,random);
+ assert.notDeepEqual(round2,group,'第二轮打乱');assert.deepEqual([...round2].sort(),[...group].sort(),'每轮没有丢字或重复字');
+ for(const c of group)d.passes[c]=2;
+ assert(!L.complete(s,key),'两次不算过关');assert(group.every(c=>!L.mastered(d,c)));
+ assert.notDeepEqual(L.recognitionQueue(d,group,random),group,'第三轮也打乱');
+ for(const c of group)d.passes[c]=3;
+ assert.deepEqual(L.recognitionQueue(d,group),[]);assert(L.complete(s,key));assert(L.validState(s));
+ const legacy=JSON.parse(JSON.stringify(s));for(const c of group)legacy.days[key].passes[c]=2;
+ assert(L.validState(legacy),'兼容旧版两次已结算记录');assert(group.every(c=>L.mastered(legacy.days[key],c)),'旧版已完成字不被撤销');
+ d.passes[group[0]]=4;assert(!L.validState(s),'拒绝超过三次的进度');
+ console.log('PASS: 首轮教材顺序、后续乱序、三次过关、听读重试、刷新恢复和旧记录兼容');
 }
