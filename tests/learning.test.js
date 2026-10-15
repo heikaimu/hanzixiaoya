@@ -187,3 +187,19 @@ console.log('PASS: 统编教材690字数据、初始检查、学习规则、每�
  d.passes[group[0]]=4;assert(!L.validState(s),'拒绝超过三次的进度');
  console.log('PASS: 首轮教材顺序、后续乱序、三次过关、听读重试、刷新恢复和旧记录兼容');
 }
+
+{
+ const s=L.empty();for(const x of L.chars.slice(0,110))s.records[x.char]={level:0,due:L.addDays(key,1),learned:key};
+ const d=L.plan(s,key),known=new Set(Object.keys(s.records)),available=L.eligible(s,d),selected=L.requiredSentences(s,d);
+ assert(available.length>=80,'前110字必须有足够的自然短句覆盖');
+ assert(available.includes('我读书。'));assert(available.includes('学校开学了。'));
+ assert(available.every(sentence=>[...sentence].every(c=>!/[\u4e00-\u9fff]/.test(c)||known.has(c))),'不能为了凑句数加入未学字');
+ assert.equal(selected.length,3);assert.equal(new Set(selected).size,3);
+ assert.deepEqual(L.requiredSentences(s,d),selected,'同组重新渲染不改变句子');
+ d.sentencePasses=[...selected];
+ const tomorrow=L.plan(s,L.addDays(key,1));
+ assert(L.requiredSentences(s,tomorrow).every(sentence=>!selected.includes(sentence)),'优先选择以往没有读过的句子');
+ assert(L.validState(s),'新增句子学习记录可以保存恢复');
+ assert.equal(new Set(L.sentences).size,L.sentences.length,'句库去重');
+ console.log('PASS: 前110字句子覆盖、已学字约束、每组三句、避免重复和进度兼容');
+}

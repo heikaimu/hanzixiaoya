@@ -1,7 +1,8 @@
 (function (root) {
   const chars = typeof module!=='undefined' ? require('./characters') : root.Characters;
   const curriculum=chars.curriculum;
-  const sentences = ['山上有水。','天上有月。','我是大人。','你是我的好妈妈。','我爱爸爸。','我爱妈妈。','我有一个家。','小鸟在天上。','山上有小树。','我看见小鱼了。','小鱼在水里。','天上有白云。','我爱我的家。','我吃米饭。','我喝水。','下雨了。','我和你去看花。','小鸟回家了。','我是小学生。','我爱读书。','我会写字。','我们是好朋友。','我和妈妈去看小鸟。','我很高兴。','我有三本书。','早上好。','我会跑也会走。','这是一只小鸟。','那里有大山。','我有一只小手。'].filter(s => [...s].every(c => !/[\u4e00-\u9fff]/.test(c) || chars.some(x => x.char===c)));
+  const readings=typeof module!=='undefined'?require('./sentences'):root.SentenceReadings;
+  const sentences=[...new Set(readings)].filter(s=>[...s].every(c=>!/[\u4e00-\u9fff]/.test(c)||chars.some(x=>x.char===c)));
   const intervals = [1,3,7,14,30];
   const DEFAULT_DAILY_COUNT=5, MAX_DAILY_COUNT=20;
   const DIFFICULTIES={easy:{label:'轻松',fresh:5,review:10},normal:{label:'正常',fresh:10,review:20},hard:{label:'困难',fresh:20,review:40}};
@@ -103,7 +104,12 @@
     day.fresh.filter(c=>mastered(day,c)).forEach(c=>known.add(c));
     return sentences.filter(s=>[...s].every(c=>!/[\u4e00-\u9fff]/.test(c)||known.has(c)));
   }
-  function requiredSentences(state,day) { return eligible(state,day).slice(0,3); }
+  function requiredSentences(state,day) {
+    const usage=new Map();
+    Object.entries(state.days).filter(([key])=>key<day.created).forEach(([,d])=>d.sentencePasses.forEach(s=>usage.set(s,(usage.get(s)||0)+1)));
+    const hash=s=>{let value=0;for(const c of (day.created||'')+s)value=(value*31+c.charCodeAt(0))>>>0;return value;};
+    return eligible(state,day).sort((a,b)=>(usage.get(a)||0)-(usage.get(b)||0)||hash(a)-hash(b)).slice(0,3);
+  }
   function complete(state,key) {
     const day=plan(state,key);
     if(day.done) return true;

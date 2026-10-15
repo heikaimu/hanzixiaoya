@@ -1,4 +1,5 @@
 import './characters.js';
+import './sentences.js';
 import './learning.js';
 import { createClient } from '@supabase/supabase-js';
 import { CloudProgress } from './cloud-progress.mjs';
