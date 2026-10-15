@@ -86,7 +86,8 @@
     const group=[...day.fresh,...day.review].filter(c=>!(day.credited||[]).includes(c));
     const total=isChar?group.length:L.requiredSentences(state,day).length;
     const passed=isChar?group.filter(c=>(day.passes[c]||0)>=2).length:total-queue.length;
-    open(head(isChar?'读给家长听':'把汉字读成一句话',true)+`<div class="progress-track"><i style="width:${passed/Math.max(1,total)*100}%"></i></div><p>${isChar?'把答案藏起来，自己试着读。':'每个字都认识了，试着连起来读出意思。'}</p><div class="recognition"><div class="round-label">${isChar?(day.fresh.includes(c)?'新字':'复习')+' · 第 '+((day.passes[c]||0)+1)+' 轮':'句子认读'}</div><div class="${isChar?'hanzi':'sentence'}">${c}</div></div><div id="hint-slot"></div><div class="modal-actions"><button class="secondary" data-action="wrong">还不熟，再学一下</button><button class="primary" data-action="right">✓ 家长确认：读对了</button></div><div class="fine-print">不提示拼音、不先播放读音，独立认读才算过关。<br>${isChar?'本组已过关 '+passed+' / '+total+' 字':'未完成 '+queue.length+' 句'}</div>`);
+    const progress=isChar?group.reduce((sum,c)=>sum+Math.min(2,day.passes[c]||0),0)/Math.max(1,total*2):passed/Math.max(1,total);
+    open(head(isChar?'读给家长听':'把汉字读成一句话',true)+`<div class="progress-track"><i style="width:${progress*100}%"></i></div><p>${isChar?'把答案藏起来，自己试着读。':'每个字都认识了，试着连起来读出意思。'}</p><div class="recognition"><div class="round-label">${isChar?(day.fresh.includes(c)?'新字':'复习')+' · 第 '+((day.passes[c]||0)+1)+' 轮':'句子认读'}</div><div class="${isChar?'hanzi':'sentence'}">${c}</div></div><div id="hint-slot"></div><div class="modal-actions"><button class="secondary" data-action="wrong">还不熟，再学一下</button><button class="primary" data-action="right">✓ 家长确认：读对了</button></div><div class="fine-print">不提示拼音、不先播放读音，独立认读才算过关。<br>${isChar?'每字连续读对两轮过关 · 本组已过关 '+passed+' / '+total+' 字':'未完成 '+queue.length+' 句'}</div>`);
   }
   function answer(right){if(!queue.length)return;rollover();if(!queue.length)return;const c=queue.shift();
     if(phase==='char'){
