@@ -203,3 +203,17 @@ console.log('PASS: 统编教材690字数据、初始检查、学习规则、每�
  assert.equal(new Set(L.sentences).size,L.sentences.length,'句库去重');
  console.log('PASS: 前110字句子覆盖、已学字约束、每组三句、避免重复和进度兼容');
 }
+
+{
+ const s=L.empty();for(const x of L.chars.slice(0,110))s.records[x.char]={level:0,due:key,learned:key};
+ const d=L.plan(s,key);for(const c of [...d.fresh,...d.review])d.passes[c]=L.REQUIRED_PASSES;
+ const selected=L.requiredSentences(s,d);
+ for(const sentence of selected){assert(!L.answerSentence(d,sentence,true),'听后确认不计数');assert.equal(L.sentenceCount(d,sentence),0);assert(!L.answerSentence(d,sentence),'第一次读对不算过关');}
+ assert(!L.complete(s,key),'所有句子只读一次不能完成');
+ assert(L.validState(JSON.parse(JSON.stringify(s))),'句子第一次读对进度可保存恢复');
+ for(const sentence of selected){assert(L.answerSentence(d,sentence));assert.equal(L.sentenceCount(d,sentence),2);}
+ assert(L.complete(s,key));const count=d.sentencePasses.length;L.answerSentence(d,selected[0]);assert.equal(d.sentencePasses.length,count,'重复确认不重复计数');
+ const legacy={sentencePasses:[selected[0]]};assert.equal(L.sentenceCount(legacy,selected[0]),2,'旧版已过关句子保持完成');
+ d.sentenceCounts[selected[0]]=3;assert(!L.validState(s),'拒绝超过两次的句子计数');
+ console.log('PASS: 句子两次过关、听后不计数、暂停恢复及旧记录兼容');
+}
