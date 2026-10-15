@@ -2,7 +2,7 @@
   const L=window.Learning, P=window.ProgressStorage;
   const $=s=>document.querySelector(s), dialog=$('#dialog');
   $('#content').innerHTML='<div class="empty">正在恢复学习进度…</div>';
-  let state=await P.initialize(), view='today', filter='all', book='all', search='', queue=[], phase='', selected=new Set(), practice=null, reviewChars=[], activeGroup=[], assisted=false;
+  let state=await P.initialize(), view='today', filter='all', book='all', search='', queue=[], phase='', selected=new Set(), practice=null, reviewChars=[], activeGroup=[], assisted=false, roundNumber=1;
   let key=L.dateKey(); let day=L.plan(state,key);
   let readingFont='song';
   try{if(localStorage.getItem('hanzi-reading-font')==='yahei')readingFont='yahei';}catch(e){}
@@ -70,25 +70,31 @@
     const pending=day.review.filter(c=>!L.mastered(day,c)),known=Object.keys(state.records);
     $('#content').innerHTML=welcome+`<section class="panel"><h3>到期复习 <span>还有 ${pending.length} 个字</span></h3><p>每组最多 ${L.reviewCount(state)} 个字，每字连续认对三次。本组完成后会保存下次复习时间，中途关闭也会保留认读进度。</p><div class="review-chips">${pending.slice(0,10).map(c=>`<button class="chip" data-char="${c}">${c}</button>`).join('')}</div><div class="panel-bottom"><span>${pending.length?'先复习一小组就好':'今天的到期字都复习好了'}</span><button class="primary" data-action="review-begin" ${pending.length?'':'disabled'}>开始复习 →</button></div></section><section class="panel review-extra"><h3>随时练一练 <span>已学 ${known.length} 字</span></h3><p>从已经学过的字中随机抽取最多 ${L.reviewCount(state)} 个，随时巩固，不改变正式复习安排。</p><button class="secondary" data-action="review-practice" ${known.length?'':'disabled'}>抽一组练习 →</button></section>`;
   }
+  function startRound(){
+    queue=L.recognitionQueue(day,activeGroup);
+    const pending=activeGroup.filter(c=>!L.mastered(day,c));
+    const first=pending.some(c=>!(day.attempted||[]).includes(c)&&!(day.passes[c]>0));
+    roundNumber=first?1:Math.max(2,1+Math.min(...pending.map(c=>day.passes[c]||0),L.REQUIRED_PASSES-1));
+  }
   function reviewBegin(){
     rollover();practice=null;
     reviewChars=day.review.filter(c=>!L.mastered(day,c)).slice(0,L.reviewCount(state));
     if(!reviewChars.length){toast('今天的到期字都复习好了。');return;}
-    activeGroup=[...reviewChars];queue=L.recognitionQueue(day,activeGroup);phase='review';next();
+    activeGroup=[...reviewChars];startRound();phase='review';next();
   }
-  function begin(){activeGroup=[...day.fresh,...day.review].filter(c=>!(day.credited||[]).includes(c));queue=L.recognitionQueue(day,activeGroup);phase='char';next();}
+  function begin(){activeGroup=[...day.fresh,...day.review].filter(c=>!(day.credited||[]).includes(c));startRound();phase='char';next();}
   function next(){
     assisted=false;if('speechSynthesis' in window)speechSynthesis.cancel();
-    if(phase!=='sentence'&&!queue.length)queue=L.recognitionQueue(day,activeGroup);
-    if(phase==='review'&&!queue.length){L.creditReview(state,key,reviewChars);save();render();open(head('这组复习完成')+'<p>这组 '+reviewChars.length+' 个字都过关了，下次复习已安排好。</p><div class="modal-actions"><button class="secondary" data-action="close">休息一下</button><button class="primary" data-action="review-begin">继续复习下一组 →</button></div>');return;}
+    if(phase!=='sentence'&&!queue.length){queue=L.recognitionQueue(day,activeGroup);if(queue.length){roundNumber=Math.min(L.REQUIRED_PASSES,roundNumber+1);}}
+    if(phase==='review'&&!queue.length){L.creditReview(state,key,reviewChars);save();render();open(head('这组复习完成')+'<div class="progress-track"><i style="width:100%"></i></div><p>这组 '+reviewChars.length+' 个字都过关了，下次复习已安排好。</p><div class="modal-actions"><button class="secondary" data-action="close">休息一下</button><button class="primary" data-action="review-begin">继续复习下一组 →</button></div>');return;}
     if(phase==='char'&&!queue.length){phase='sentence';queue=L.requiredSentences(state,day).filter(s=>!day.sentencePasses.includes(s));}
     if(!queue.length){if(L.complete(state,key)){save();render();success();}else toast('还有认读任务未完成，请继续练习。');return;}
     const c=queue[0],isChar=phase!=='sentence';
     const group=activeGroup;
     const total=isChar?group.length:L.requiredSentences(state,day).length;
     const passed=isChar?group.filter(c=>L.mastered(day,c)).length:total-queue.length;
-    const progress=isChar?group.reduce((sum,c)=>sum+Math.min(L.REQUIRED_PASSES,day.passes[c]||0),0)/Math.max(1,total*L.REQUIRED_PASSES):passed/Math.max(1,total);
-    open(head(isChar?'读给家长听':'把汉字读成一句话',true)+`<div class="progress-track"><i style="width:${progress*100}%"></i></div><div class="round-label">${isChar?(day.fresh.includes(c)?'新字':'复习')+' · 已认对 '+(day.passes[c]||0)+' / '+L.REQUIRED_PASSES+' 次':'句子认读'}</div><p>${isChar?'自己试着读，还不熟可以反复听。':'每个字都认识了，试着连起来读出意思。'}</p><div class="recognition">${isChar?'<div class="char-pinyin">'+info(c).pinyin+'</div>':''}<div class="${isChar?'hanzi':'sentence'}">${c}</div></div><div class="modal-actions"><button class="secondary" data-action="wrong">♫ 听一听</button><button class="primary" data-action="right">✓ 家长确认：读对了</button></div><div class="fine-print">听过后本次确认不计入过关，稍后会再认。<br>${isChar?'每字连续读对三次过关 · 本组已过关 '+passed+' / '+total+' 字':'未完成 '+queue.length+' 句'}</div>`);
+    const progress=isChar?(roundNumber-1)/L.REQUIRED_PASSES:passed/Math.max(1,total);
+    open(head(isChar?'读给家长听':'把汉字读成一句话',true)+`<div class="progress-track"><i style="width:${progress*100}%"></i></div><div class="round-label">${isChar?(day.fresh.includes(c)?'新字':'复习')+' · 第 '+roundNumber+' / '+L.REQUIRED_PASSES+' 轮':'句子认读'}</div><p>${isChar?'自己试着读，还不熟可以反复听。':'每个字都认识了，试着连起来读出意思。'}</p><div class="recognition">${isChar?'<div class="char-pinyin">'+info(c).pinyin+'</div>':''}<div class="${isChar?'hanzi':'sentence'}">${c}</div></div><div class="modal-actions"><button class="secondary" data-action="wrong">♫ 听一听</button><button class="primary" data-action="right">✓ 家长确认：读对了</button></div><div class="fine-print">听过后本次确认不计入过关，稍后会再认。<br>${isChar?'每字连续读对三次过关 · 本组已过关 '+passed+' / '+total+' 字':'未完成 '+queue.length+' 句'}</div>`);
   }
   function answer(right){
     if(!queue.length)return;rollover();if(!queue.length)return;
@@ -105,14 +111,14 @@
     if(phase==='review')L.creditReview(state,key,reviewChars);
     save();render();next();
   }
-  function success(){open(head('今日学习完成')+`<div class="success-art">🌱</div><h2 class="success-title">小小的你，又长大了一点！</h2><p class="fine-print">${day.fresh.length} 个新字 · ${day.review.length} 个复习字 · ${day.sentencePasses.length} 句小句子<br>全部独立认读过关。还想学的话，可以继续下一组新字。</p><div class="modal-actions"><button class="secondary" data-action="close">收好今天的小成就 ✓</button><button class="primary" data-action="continue-learning">继续学习下一组 →</button></div>`);}
+  function success(){open(head('今日学习完成')+`<div class="progress-track"><i style="width:100%"></i></div><div class="success-art">🌱</div><h2 class="success-title">小小的你，又长大了一点！</h2><p class="fine-print">${day.fresh.length} 个新字 · ${day.review.length} 个复习字 · ${day.sentencePasses.length} 句小句子<br>全部独立认读过关。还想学的话，可以继续下一组新字。</p><div class="modal-actions"><button class="secondary" data-action="close">收好今天的小成就 ✓</button><button class="primary" data-action="continue-learning">继续学习下一组 →</button></div>`);}
   function start(){rollover();if(day.done){open(head('今天已经全部过关')+'<p>可以继续学习下一组新字，也可以再次测试今天的新字、复习字和小句子。本次测试不计入学习进度，也不会改变复习安排。</p><div class="modal-actions"><button class="secondary" data-action="practice-begin">再次测试</button><button class="primary" data-action="continue-learning">继续学习下一组 →</button></div>');}else introduction();}
   function practiceBegin(mode='today'){
     rollover();if(mode==='today'&&!day.done){start();return;}
     const chars=mode==='all'?Object.keys(state.records).sort(()=>Math.random()-.5).slice(0,L.reviewCount(state)):[...new Set([...day.fresh,...day.review])].sort(()=>Math.random()-.5);
     const ordered=L.chars.map(x=>x.char).filter(c=>chars.includes(c));
     const items=[...ordered.map(text=>({text,isChar:true})),...(mode==='all'?[]:L.requiredSentences(state,day).map(text=>({text,isChar:false})))];
-    practice={key,mode,items,queue:items.filter(x=>x.isChar),passes:{},attempted:[],sentencePasses:[],total:items.length,passed:0,mistakes:new Set()};practiceNext();
+    practice={key,mode,items,queue:items.filter(x=>x.isChar),passes:{},attempted:[],sentencePasses:[],round:1,total:items.length,passed:0,mistakes:new Set()};practiceNext();
   }
   function practiceNext(){
     assisted=false;if('speechSynthesis' in window)speechSynthesis.cancel();
@@ -120,15 +126,16 @@
     if(practice.key!==L.dateKey()){practice=null;rollover();return;}
     if(!practice.queue.length){
       const pending=L.recognitionQueue(practice,practice.items.filter(x=>x.isChar).map(x=>x.text));
+      if(pending.length){practice.round=Math.min(L.REQUIRED_PASSES,practice.round+1);}
       practice.queue=pending.length?pending.map(text=>({text,isChar:true})):practice.items.filter(x=>!x.isChar&&!practice.sentencePasses.includes(x.text));
     }
     if(!practice.queue.length){
-      open(head('再次测试完成')+`<div class="success-art">🌱</div><h2 class="success-title">又练习了一遍，真棒！</h2><p>已完成 ${practice.total} 项认读${practice.mistakes.size?'，其中 '+practice.mistakes.size+' 项经过再次练习后读对了':'，全部一次读对'}。</p><p class="fine-print">本次测试未计入学习进度，今日成绩和复习安排保持不变。</p><div class="modal-actions"><button class="secondary" data-action="close">完成</button><button class="primary" data-action="${practice.mode==='all'?'review-practice':'practice-begin'}">再测一次 →</button></div>`);practice=null;return;
+      open(head('再次测试完成')+`<div class="progress-track"><i style="width:100%"></i></div><div class="success-art">🌱</div><h2 class="success-title">又练习了一遍，真棒！</h2><p>已完成 ${practice.total} 项认读${practice.mistakes.size?'，其中 '+practice.mistakes.size+' 项经过再次练习后读对了':'，全部一次读对'}。</p><p class="fine-print">本次测试未计入学习进度，今日成绩和复习安排保持不变。</p><div class="modal-actions"><button class="secondary" data-action="close">完成</button><button class="primary" data-action="${practice.mode==='all'?'review-practice':'practice-begin'}">再测一次 →</button></div>`);practice=null;return;
     }
     const item=practice.queue[0];
-    const attempts=Object.values(practice.passes).reduce((sum,n)=>sum+n,0)+practice.sentencePasses.length;
-    const required=practice.items.reduce((sum,x)=>sum+(x.isChar?L.REQUIRED_PASSES:1),0);
-    open(head('再次测试 · '+(item.isChar?'汉字认读':'句子认读'),true)+`<p class="fine-print">仅用于巩固，不计入学习进度。请先独立读给家长听。</p><div class="progress-track"><i style="width:${attempts/Math.max(1,required)*100}%"></i></div><div class="round-label">${item.isChar?(day.fresh.includes(item.text)?'已学汉字':'复习汉字')+' · 已认对 '+(practice.passes[item.text]||0)+' / '+L.REQUIRED_PASSES+' 次':'今天的小句子'}</div><div class="recognition">${item.isChar?'<div class="char-pinyin">'+info(item.text).pinyin+'</div>':''}<div class="${item.isChar?'hanzi':'sentence'}">${item.text}</div></div><div class="modal-actions"><button class="secondary" data-action="practice-wrong">♫ 听一听</button><button class="primary" data-action="practice-right">✓ 家长确认：读对了</button></div><p class="fine-print">已完成 ${practice.passed} / ${practice.total} 项</p>`);
+    const sentenceTotal=practice.items.filter(x=>!x.isChar).length;
+    const progress=item.isChar?(practice.round-1)/L.REQUIRED_PASSES:practice.sentencePasses.length/Math.max(1,sentenceTotal);
+    open(head('再次测试 · '+(item.isChar?'汉字认读':'句子认读'),true)+`<p class="fine-print">仅用于巩固，不计入学习进度。请先独立读给家长听。</p><div class="progress-track"><i style="width:${progress*100}%"></i></div><div class="round-label">${item.isChar?(day.fresh.includes(item.text)?'已学汉字':'复习汉字')+' · 第 '+practice.round+' / '+L.REQUIRED_PASSES+' 轮':'今天的小句子'}</div><div class="recognition">${item.isChar?'<div class="char-pinyin">'+info(item.text).pinyin+'</div>':''}<div class="${item.isChar?'hanzi':'sentence'}">${item.text}</div></div><div class="modal-actions"><button class="secondary" data-action="practice-wrong">♫ 听一听</button><button class="primary" data-action="practice-right">✓ 家长确认：读对了</button></div><p class="fine-print">已完成 ${practice.passed} / ${practice.total} 项</p>`);
   }
   function practiceAnswer(right){
     if(!practice?.queue.length)return;
