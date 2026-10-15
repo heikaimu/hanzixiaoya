@@ -60,6 +60,12 @@ dialog.recognition-dialog{width:min(560px,calc(100% - 24px));max-width:calc(100v
  .recognition-dialog .recognition .char-pinyin{font-size:20px}
 }
 
-.new-friends{margin-top:28px}
 
 .practice-result{text-align:center}
+
+.history-row{gap:16px;flex-wrap:wrap}
+.history-copy{flex:1;min-width:160px;overflow-wrap:anywhere}
+.history-actions{display:flex;align-items:center;gap:14px;flex-shrink:0}
+.history-actions span{font-size:12px}
+.history-actions button{font-size:12px;padding:10px 14px}
+@media(max-width:550px){.history-actions{width:100%;justify-content:space-between}}
