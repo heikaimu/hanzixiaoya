@@ -2,7 +2,7 @@
   const L=window.Learning, P=window.ProgressStorage;
   const $=s=>document.querySelector(s), dialog=$('#dialog');
   $('#content').innerHTML='<div class="empty">正在恢复学习进度…</div>';
-  let state=await P.initialize(), view='today', filter='all', book='all', search='', queue=[], phase='', selected=new Set(), practice=null, reviewChars=[];
+  let state=await P.initialize(), view='today', filter='all', book='all', search='', queue=[], phase='', selected=new Set(), practice=null, reviewChars=[], assisted=false;
   let key=L.dateKey(); let day=L.plan(state,key);
   let readingFont='song';
   try{if(localStorage.getItem('hanzi-reading-font')==='yahei')readingFont='yahei';}catch(e){}
@@ -29,26 +29,16 @@
   function rollover(){const now=L.dateKey();if(now!==key){key=now;day=L.plan(state,key);queue=[];dialog.close();save();render();toast('新的一天开始了，今日任务已更新。');}}
   function open(html){$('#dialog-content').innerHTML='<div class="modal">'+html+'</div>';if(!dialog.open)dialog.showModal();}
   function head(title,withFont=false){return `<div class="modal-head"><h2>${title}</h2><div class="modal-head-actions">${withFont?`<label class="test-font-control">认读字体 <select id="reading-font"><option value="song" ${readingFont==='song'?'selected':''}>宋体</option><option value="yahei" ${readingFont==='yahei'?'selected':''}>微软雅黑</option></select></label>`:''}<button class="close" data-action="close" aria-label="关闭">×</button></div></div>`;}
-  function speech(text){if(!('speechSynthesis' in window)){toast('当前浏览器不支持朗读，请由家长示范。');return;}speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='zh-CN';u.rate=.75;u.onerror=()=>toast('朗读未能播放，请由家长示范。');speechSynthesis.speak(u);}
-  function listenAndRetry(text,isChar,advance){
-    const card=$('#dialog-content .recognition'),slot=$('#hint-slot');
-    if(!card||!slot)return;
-    const started=L.dateKey(),x=isChar?info(text):null;
-    slot.innerHTML='<div class="hint" role="status">'+(x?esc(x.pinyin+' · '+x.word)+'<br>':'')+'正在朗读，听完继续。这个字稍后会再出现。</div>';
-    const actions=$('#dialog-content .modal-actions');
-    actions.querySelectorAll('button').forEach(b=>b.disabled=true);
-    const skip=document.createElement('button');skip.className='text-button';skip.textContent='继续 →';slot.append(skip);
-    let settled=false,timer,utterance;
-    const active=()=>dialog.open&&card.isConnected;
-    function stop(){clearTimeout(timer);if(utterance){utterance.onend=null;utterance.onerror=null;}}
-    function finish(){if(settled)return;settled=true;stop();if('speechSynthesis' in window)speechSynthesis.cancel();if(active()){if(started!==L.dateKey()){rollover();return;}advance();}}
-    function failed(){if(settled||!active())return;stop();slot.querySelector('.hint').innerHTML=(x?esc(x.pinyin+' · '+x.word)+'<br>':'')+'暂时无法播放，请家长示范后点击继续。稍后还会再认一次。';}
-    skip.onclick=finish;
-    if(!('speechSynthesis' in window)){failed();return;}
-    speechSynthesis.cancel();utterance=new SpeechSynthesisUtterance(x?text+'，'+x.word:text);utterance.lang='zh-CN';utterance.rate=.75;
-    utterance.onend=finish;utterance.onerror=failed;
-    timer=setTimeout(failed,12000);
-    try{speechSynthesis.speak(utterance);}catch(e){failed();}
+  function speech(text,quiet=false){
+    if(!('speechSynthesis' in window)){if(!quiet)toast('当前浏览器不支持朗读，请由家长示范。');return;}
+    speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='zh-CN';u.rate=.75;
+    u.onerror=e=>{if(!quiet&&!['canceled','interrupted'].includes(e.error))toast('朗读未能播放，请由家长示范。');};
+    try{speechSynthesis.speak(u);}catch(e){if(!quiet)toast('朗读未能播放，请由家长示范。');}
+  }
+  function listenCurrent(text,isChar){
+    assisted=true;
+    const x=isChar?info(text):null;
+    speech(x?text+'，'+x.word:text,true);
   }
   dialog.addEventListener('close',()=>{if('speechSynthesis' in window)speechSynthesis.cancel();});
   function render(){
@@ -75,7 +65,7 @@
   }
   function renderHistory(welcome){const days=Object.entries(state.days).sort((a,b)=>b[0].localeCompare(a[0]));$('#content').innerHTML=welcome+`<div class="panel"><h3>你的识字旅程 <span>累计完成 ${days.filter(([,d])=>d.done).length} 天</span></h3><p>完成认读后，小芽就会留下一个成长脚印。</p></div>`+days.map(([d,v])=>`<div class="history-row"><div><b>${d}</b><small>新字 ${v.fresh.join('、')||'字库已学完'} · 复习 ${v.review.length} 字 · 句子 ${v.sentencePasses.length} 句</small></div><span style="color:${v.done?'#67834f':'#ae9b72'}">${v.done?'🌱 全部过关':'◷ '+(d===key?'继续努力':'当日未完成')}</span></div>`).join('');}
   function showChar(c){const x=info(c);if(!x)return;open(head('认识一个新朋友')+`<div class="study-char"><div class="char-pinyin">${x.pinyin}</div><div class="hanzi">${c}</div><div class="study-word">${x.word}</div></div><p class="fine-print">一年级${x.semester} · 第${x.unit}单元 · ${x.lesson} · 第${x.page}页</p>${x.otherReadings?.length?'<div class="other-readings"><b>教材中的其他读音</b>'+x.otherReadings.map(r=>'<p>'+r.pinyin+' · '+r.word+' <button class="text-button" data-speak="'+r.word+'">♫ 听词语</button></p>').join('')+'</div>':''}<p class="fine-print">先听读音，再和家长一起读一遍。</p><div class="modal-actions"><button class="secondary" data-speak="${c+'，'+x.word}">♫ 听一听</button><button class="primary" data-action="close">认识你啦</button></div>`);}
-  function introduction(){open(head('先和新朋友见个面')+`<p>点一个字听一听，和家长一起读。准备好后，把拼音藏起来试试看。</p><div class="review-chips">${day.fresh.map(c=>`<button class="chip" data-speak="${c+'，'+info(c).word}">${c}</button>`).join('')}</div><p class="fine-print">${day.review.length?'还有 '+day.review.length+' 个旧字要复习。<br>':''}请家长听孩子独立认读，再确认答案。每个字需要连续认对两轮。</p><div class="modal-actions"><button class="primary" data-action="begin">准备好了，开始认读 →</button></div>`);}
+  function introduction(){open(head('先和新朋友见个面')+`<p>点一个字听一听，和家长一起读。准备好后，开始逐字认读。</p><div class="review-chips">${day.fresh.map(c=>`<button class="chip" data-speak="${c+'，'+info(c).word}">${c}</button>`).join('')}</div><p class="fine-print">${day.review.length?'还有 '+day.review.length+' 个旧字要复习。<br>':''}请家长听孩子独立认读，再确认答案。每个字需要连续认对两轮。</p><div class="modal-actions"><button class="primary" data-action="begin">准备好了，开始认读 →</button></div>`);}
   function renderReview(welcome){
     const pending=day.review.filter(c=>(day.passes[c]||0)<2),known=Object.keys(state.records);
     $('#content').innerHTML=welcome+`<section class="panel"><h3>到期复习 <span>还有 ${pending.length} 个字</span></h3><p>每组最多 ${L.reviewCount(state)} 个字，每字连续认对两次。本组完成后会保存下次复习时间，中途关闭也会保留认读进度。</p><div class="review-chips">${pending.slice(0,10).map(c=>`<button class="chip" data-char="${c}">${c}</button>`).join('')}</div><div class="panel-bottom"><span>${pending.length?'先复习一小组就好':'今天的到期字都复习好了'}</span><button class="primary" data-action="review-begin" ${pending.length?'':'disabled'}>开始复习 →</button></div></section><section class="panel review-extra"><h3>随时练一练 <span>已学 ${known.length} 字</span></h3><p>从已经学过的字中随机抽取最多 ${L.reviewCount(state)} 个，随时巩固，不改变正式复习安排。</p><button class="secondary" data-action="review-practice" ${known.length?'':'disabled'}>抽一组练习 →</button></section>`;
@@ -88,6 +78,7 @@
   }
   function begin(){queue=[...day.fresh,...day.review].filter(c=>(day.passes[c]||0)<2).sort(()=>Math.random()-.5);phase='char';next();}
   function next(){
+    assisted=false;if('speechSynthesis' in window)speechSynthesis.cancel();
     if(phase==='review'&&!queue.length){L.creditReview(state,key,reviewChars);save();render();open(head('这组复习完成')+'<p>这组 '+reviewChars.length+' 个字都过关了，下次复习已安排好。</p><div class="modal-actions"><button class="secondary" data-action="close">休息一下</button><button class="primary" data-action="review-begin">继续复习下一组 →</button></div>');return;}
     if(phase==='char'&&!queue.length){phase='sentence';queue=L.requiredSentences(state,day).filter(s=>!day.sentencePasses.includes(s));}
     if(!queue.length){if(L.complete(state,key)){save();render();success();}else toast('还有认读任务未完成，请继续练习。');return;}
@@ -96,17 +87,22 @@
     const total=isChar?group.length:L.requiredSentences(state,day).length;
     const passed=isChar?group.filter(c=>(day.passes[c]||0)>=2).length:total-queue.length;
     const progress=isChar?group.reduce((sum,c)=>sum+Math.min(2,day.passes[c]||0),0)/Math.max(1,total*2):passed/Math.max(1,total);
-    open(head(isChar?'读给家长听':'把汉字读成一句话',true)+`<div class="progress-track"><i style="width:${progress*100}%"></i></div><p>${isChar?'把答案藏起来，自己试着读。':'每个字都认识了，试着连起来读出意思。'}</p><div class="recognition"><div class="round-label">${isChar?(day.fresh.includes(c)?'新字':'复习')+' · 第 '+((day.passes[c]||0)+1)+' 轮':'句子认读'}</div><div class="${isChar?'hanzi':'sentence'}">${c}</div></div><div id="hint-slot"></div><div class="modal-actions"><button class="secondary" data-action="wrong"><span aria-hidden="true">▶</span> 还不熟，听一下</button><button class="primary" data-action="right">✓ 家长确认：读对了</button></div><div class="fine-print">不提示拼音、不先播放读音，独立认读才算过关。<br>${isChar?'每字连续读对两轮过关 · 本组已过关 '+passed+' / '+total+' 字':'未完成 '+queue.length+' 句'}</div>`);
+    open(head(isChar?'读给家长听':'把汉字读成一句话',true)+`<div class="progress-track"><i style="width:${progress*100}%"></i></div><p>${isChar?'自己试着读，还不熟可以反复听。':'每个字都认识了，试着连起来读出意思。'}</p><div class="recognition"><div class="round-label">${isChar?(day.fresh.includes(c)?'新字':'复习')+' · 第 '+((day.passes[c]||0)+1)+' 轮':'句子认读'}</div>${isChar?'<div class="char-pinyin">'+info(c).pinyin+'</div>':''}<div class="${isChar?'hanzi':'sentence'}">${c}</div></div><div class="modal-actions"><button class="secondary" data-action="wrong"><span aria-hidden="true">▶</span> 还不熟，听一下</button><button class="primary" data-action="right">✓ 家长确认：读对了</button></div><div class="fine-print">听过后本次确认不计入过关，稍后会再认。<br>${isChar?'每字连续读对两轮过关 · 本组已过关 '+passed+' / '+total+' 字':'未完成 '+queue.length+' 句'}</div>`);
   }
-  function answer(right){if(!queue.length)return;rollover();if(!queue.length)return;const c=queue.shift();
-    if(phase!=='sentence'){
-      day.passes[c]=right?(day.passes[c]||0)+1:0;
-      if(!right){day.failed=day.failed||{};day.failed[c]=true;}
+  function answer(right){
+    if(!queue.length)return;rollover();if(!queue.length)return;
+    const c=queue[0],isChar=phase!=='sentence';
+    if(!right){
+      if(isChar){day.passes[c]=0;day.failed=day.failed||{};day.failed[c]=true;}
+      listenCurrent(c,isChar);save();render();return;
+    }
+    queue.shift();
+    if(assisted){queue.push(c);}else if(isChar){
+      day.passes[c]=Math.min(2,(day.passes[c]||0)+1);
       if(day.passes[c]<2)queue.push(c);
-    }else if(right){if(!day.sentencePasses.includes(c))day.sentencePasses.push(c);}else queue.push(c);
+    }else if(!day.sentencePasses.includes(c))day.sentencePasses.push(c);
     if(phase==='review')L.creditReview(state,key,reviewChars);
-    save();render();
-    if(!right)listenAndRetry(c,phase!=='sentence',next);else next();
+    save();render();next();
   }
   function success(){open(head('今日学习完成')+`<div class="success-art">🌱</div><h2 class="success-title">小小的你，又长大了一点！</h2><p class="fine-print">${day.fresh.length} 个新字 · ${day.review.length} 个复习字 · ${day.sentencePasses.length} 句小句子<br>全部独立认读过关。还想学的话，可以继续下一组新字。</p><div class="modal-actions"><button class="secondary" data-action="close">收好今天的小成就 ✓</button><button class="primary" data-action="continue-learning">继续学习下一组 →</button></div>`);}
   function start(){rollover();if(day.done){open(head('今天已经全部过关')+'<p>可以继续学习下一组新字，也可以再次测试今天的新字、复习字和小句子。本次测试不计入学习进度，也不会改变复习安排。</p><div class="modal-actions"><button class="secondary" data-action="practice-begin">再次测试</button><button class="primary" data-action="continue-learning">继续学习下一组 →</button></div>');}else introduction();}
@@ -117,21 +113,23 @@
     practice={key,mode,queue:items,total:items.length,passed:0,mistakes:new Set()};practiceNext();
   }
   function practiceNext(){
+    assisted=false;if('speechSynthesis' in window)speechSynthesis.cancel();
     if(!practice)return;
     if(practice.key!==L.dateKey()){practice=null;rollover();return;}
     if(!practice.queue.length){
       open(head('再次测试完成')+`<div class="success-art">🌱</div><h2 class="success-title">又练习了一遍，真棒！</h2><p>已完成 ${practice.total} 项认读${practice.mistakes.size?'，其中 '+practice.mistakes.size+' 项经过再次练习后读对了':'，全部一次读对'}。</p><p class="fine-print">本次测试未计入学习进度，今日成绩和复习安排保持不变。</p><div class="modal-actions"><button class="secondary" data-action="close">完成</button><button class="primary" data-action="${practice.mode==='all'?'review-practice':'practice-begin'}">再测一次 →</button></div>`);practice=null;return;
     }
     const item=practice.queue[0];
-    open(head('再次测试 · '+(item.isChar?'汉字认读':'句子认读'),true)+`<p class="fine-print">仅用于巩固，不计入学习进度。请先独立读给家长听。</p><div class="progress-track"><i style="width:${practice.passed/Math.max(1,practice.total)*100}%"></i></div><div class="recognition"><div class="round-label">${item.isChar?(day.fresh.includes(item.text)?'已学汉字':'复习汉字'):'今天的小句子'}</div><div class="${item.isChar?'hanzi':'sentence'}">${item.text}</div></div><div id="hint-slot"></div><div class="modal-actions"><button class="secondary" data-action="practice-wrong"><span aria-hidden="true">▶</span> 还不熟，听一下</button><button class="primary" data-action="practice-right">✓ 家长确认：读对了</button></div><p class="fine-print">已完成 ${practice.passed} / ${practice.total} 项</p>`);
+    open(head('再次测试 · '+(item.isChar?'汉字认读':'句子认读'),true)+`<p class="fine-print">仅用于巩固，不计入学习进度。请先独立读给家长听。</p><div class="progress-track"><i style="width:${practice.passed/Math.max(1,practice.total)*100}%"></i></div><div class="recognition"><div class="round-label">${item.isChar?(day.fresh.includes(item.text)?'已学汉字':'复习汉字'):'今天的小句子'}</div>${item.isChar?'<div class="char-pinyin">'+info(item.text).pinyin+'</div>':''}<div class="${item.isChar?'hanzi':'sentence'}">${item.text}</div></div><div class="modal-actions"><button class="secondary" data-action="practice-wrong"><span aria-hidden="true">▶</span> 还不熟，听一下</button><button class="primary" data-action="practice-right">✓ 家长确认：读对了</button></div><p class="fine-print">已完成 ${practice.passed} / ${practice.total} 项</p>`);
   }
   function practiceAnswer(right){
     if(!practice?.queue.length)return;
     if(practice.key!==L.dateKey()){practice=null;rollover();return;}
-    const item=practice.queue.shift();
-    if(right){practice.passed++;practiceNext();return;}
-    practice.mistakes.add(item.text);practice.queue.push(item);
-    listenAndRetry(item.text,item.isChar,practiceNext);
+    const item=practice.queue[0];
+    if(!right){practice.mistakes.add(item.text);listenCurrent(item.text,item.isChar);return;}
+    practice.queue.shift();
+    if(assisted)practice.queue.push(item);else practice.passed++;
+    practiceNext();
   }
   function sentence(){if(count()<day.fresh.length+day.review.length){toast('先完成今天的汉字认读，再来读小句子。');start();return;}const ss=L.requiredSentences(state,day);if(!ss.length){toast('还没有能组成的句子。学会更多字就能解锁啦！');return;}if(day.done){open(head('今天的小句子')+ss.map(s=>`<p class="sentence-preview">${s}</p><button class="text-button" data-speak="${s}">♫ 听读音</button>`).join(''));return;}phase='sentence';queue=ss.filter(s=>!day.sentencePasses.includes(s));next();}
   function settings(){
