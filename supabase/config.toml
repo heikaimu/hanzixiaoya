@@ -1,0 +1,2 @@
+[functions.upload-avatar]
+verify_jwt = false

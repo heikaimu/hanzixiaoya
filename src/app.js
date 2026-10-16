@@ -1,9 +1,11 @@
+import { installAvatar } from './avatar.mjs';
 (async () => {
   const L=window.Learning, P=window.ProgressStorage;
   const $=s=>document.querySelector(s), dialog=$('#dialog');
   $('#content').innerHTML='<div class="empty">正在恢复学习进度…</div>';
   let state=await P.initialize(), view='today', filter='all', book='all', search='', queue=[], phase='', selected=new Set(), practice=null, reviewChars=[], activeGroup=[], assisted=false, roundNumber=1;
   let key=L.dateKey(); let day=L.plan(state,key);
+  const avatar=installAvatar({progress:P,open,head,settings,toast,escape:esc});
   let readingFont='song';
   try{if(localStorage.getItem('hanzi-reading-font')==='yahei')readingFont='yahei';}catch(e){}
   document.documentElement.dataset.readingFont=readingFont;
@@ -18,6 +20,7 @@
     const entry=$('#account-entry');entry.textContent=info.user&&!info.needsLogin?info.user.username:'登录 / 注册';entry.dataset.action=info.user&&!info.needsLogin?'cloud-account':'cloud-auth';entry.disabled=!info.configured||info.loading;entry.title=info.user?info.user.username:info.configured?'登录家长账号，长期保存学习进度':'云端服务尚未配置';
     $('#content').inert=Boolean(info.loading);$('#content').setAttribute('aria-busy',String(info.loading));
     if($('#cloud-section'))$('#cloud-section').innerHTML=cloudPanel();
+    avatar.paint();
   }
   function toast(message){$('#toast').textContent=message;$('#toast').classList.add('show');setTimeout(()=>$('#toast').classList.remove('show'),3200);}
   function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -27,7 +30,7 @@
   function totalKnown(){return new Set([...Object.keys(state.records),...day.fresh.filter(c=>L.mastered(day,c))]).size;}
   function dateLabel(){return new Date(key+'T12:00:00').toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'});}
   function rollover(){const now=L.dateKey();if(now!==key){key=now;day=L.plan(state,key);queue=[];dialog.close();save();render();toast('新的一天开始了，今日任务已更新。');}}
-  function open(html){dialog.classList.toggle('recognition-dialog',html.includes('class="recognition"'));$('#dialog-content').innerHTML='<div class="modal">'+html+'</div>';if(!dialog.open)dialog.showModal();}
+  function open(html){dialog.classList.toggle('recognition-dialog',html.includes('class="recognition"'));$('#dialog-content').innerHTML='<div class="modal">'+html+'</div>';if(!dialog.open)dialog.showModal();queueMicrotask(()=>avatar.paint());}
   function head(title){return `<div class="modal-head"><h2>${title}</h2><div class="modal-head-actions"><button class="close" data-action="close" aria-label="关闭">×</button></div></div>`;}
   function speech(text,quiet=false){
     if(!('speechSynthesis' in window)){if(!quiet)toast('当前浏览器不支持朗读，请由家长示范。');return;}
@@ -165,7 +168,7 @@
     const info=P.info();
     if(!info.configured)return '<h3>云端保存</h3><p>尚未配置云端服务。请按项目说明配置 Supabase 后重启网页服务；当前进度保存在本浏览器。</p>';
     if(!info.user||info.needsLogin)return '<h3>长期保存学习进度</h3><p>输入用户名登录，将认读进度、复习安排和每日设置保存到云端。换设备后登录同一账号即可继续学习。</p>'+(info.message?'<p class="warning">'+esc(info.message)+'</p>':'')+'<button class="primary" data-action="cloud-auth">登录 / 注册家长账号</button>';
-    let html=`<h3>云端保存</h3><p class="cloud-account">${esc(info.user.username||'家长账号')}</p><p>${storageLabel(info)}${info.updatedAt?'<br>上次云端保存：'+new Date(info.updatedAt).toLocaleString('zh-CN'):''}</p>${info.message?'<p class="warning">'+esc(info.message)+'</p>':''}`;
+    let html=`<h3>云端保存</h3><div id="avatar-profile" class="avatar-profile"></div><p class="cloud-account">${esc(info.user.username||'家长账号')}</p><p>${storageLabel(info)}${info.updatedAt?'<br>上次云端保存：'+new Date(info.updatedAt).toLocaleString('zh-CN'):''}</p>${info.message?'<p class="warning">'+esc(info.message)+'</p>':''}`;
     if(info.conflict){
       const remote=info.conflict.record?.state;
       html+=`<div class="setting-note"><p>本机已认识 ${Object.keys(state.records).length} 字；云端已认识 ${Object.keys(remote?.records||{}).length} 字。选择前会在本机备份另一份进度。</p><button class="secondary" data-action="cloud-use-remote">使用云端进度</button><button class="secondary" data-action="cloud-use-local">保留本机进度并上传</button></div>`;

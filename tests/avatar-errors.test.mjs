@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import { avatarUploadError } from '../src/avatar-errors.mjs';
+const failure=(status,body)=>({context:new Response(JSON.stringify(body),{status})});
+assert.match(await avatarUploadError(failure(404,{code:'NOT_FOUND',message:'Requested function was not found'})),/尚未部署/);
+assert.equal(await avatarUploadError(failure(401,{error:'登录已过期，请重新登录'})),'登录已过期，请重新登录');
+assert.match(await avatarUploadError(failure(401,{code:401,message:'Invalid JWT'})),/Verify JWT/);
+assert.match(await avatarUploadError({name:'FunctionsFetchError'}),/无法连接/);
+assert.equal(await avatarUploadError(null,{error:'图片必须为 200×200 PNG'}),'图片必须为 200×200 PNG');
+assert.match(await avatarUploadError({context:new Response('upstream unavailable',{status:502})}),/稍后重试/);
+console.log('PASS: 头像上传未部署、会话过期、JWT 配置、网络和服务端错误提示');

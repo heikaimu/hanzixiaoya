@@ -35,3 +35,22 @@
 每次学习先存本机，再自动上传。离线未同步修改保留在对应用户名的独立缓存，下次有效会话登录后重试；在途请求排队、重复请求去重和多设备冲突选择沿用原流程。只有“云端已保存”表示最新数据已上传。
 
 `npm test` 验证密码格式、错误密码拒绝、无令牌访问拒绝、注销、旧登录状态失效，以及保存、恢复、断网和冲突。迁移内验证检查真实数据库函数；浏览器测试使用模拟接口，不生成真实家长账号。
+
+## 用户头像
+
+登录后在家长设置点击“更换头像”，选择不超过 10 MB 的 JPG、PNG 或 WebP，调整缩放和左右/上下位置，保存后生成 200×200 PNG。头像在账号按钮和家长设置中显示。头像为公开资源，请勿上传敏感图片。
+
+启用步骤（在 003 之后）：
+
+1. 在 SQL Editor 执行 [`supabase/migrations/202610160001_user_avatars.sql`](../supabase/migrations/202610160001_user_avatars.sql)，创建公开的 `avatars` Bucket（256 KB、仅 PNG）及头像路径字段和读取接口。
+2. 使用 Supabase CLI 登录，在项目目录部署：
+
+   ```sh
+   supabase functions deploy upload-avatar --project-ref zzmbjjgdcfqwflulutvv --no-verify-jwt
+   ```
+
+`supabase/config.toml` 已关闭该函数的平台 JWT 检查：本项目使用自定义用户名会话，函数内部必须通过现有 `read_protected_username_progress` 校验会话后才允许上传。该配置依据 [Supabase 函数配置文档](https://supabase.com/docs/guides/functions/function-configuration)。函数使用 Supabase 托管环境自动提供的 `SUPABASE_URL` 和 `SUPABASE_SERVICE_ROLE_KEY`；service role key 仅在函数端使用，不要添加到任何 `VITE_` 环境变量。
+
+不要添加允许匿名写入 `storage.objects` 的策略。上传函数校验 PNG 签名、200×200 尺寸和 256 KB 上限，根据已验证的账号生成对象目录，保存新路径后删除旧图片。头像独立于学习进度，重置/恢复学习记录不会覆盖头像。新文件使用独立 URL，避免浏览器缓存旧头像。
+
+本地代码检查不代表已部署：需完成上述迁移和函数部署，再用实际账号检查上传、刷新和跨设备读取。
