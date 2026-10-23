@@ -10,6 +10,22 @@
   function reviewCount(state){return DIFFICULTIES[difficulty(state)].review;}
   function sentenceLimit(state){return DIFFICULTIES[difficulty(state)].sentences;}
   function sentenceReview(state,day,random=Math.random){return shuffled(eligible(state,day),random).slice(0,sentenceLimit(state));}
+  // Split at a distinct length boundary so punctuation never affects the mix.
+  function sentenceBatch(pool,previous=[],random=Math.random){
+    const length=text=>(text.match(/[\u4e00-\u9fff]/g)||[]).length;
+    const sorted=[...new Set(pool)].sort((a,b)=>length(a)-length(b));
+    let split=0;
+    for(let i=1;i<sorted.length;i++){
+      if(length(sorted[i-1])!==length(sorted[i])&&(!split||Math.abs(i-sorted.length/2)<Math.abs(split-sorted.length/2)))split=i;
+    }
+    const seen=new Set(previous);
+    const pick=items=>[...shuffled(items.filter(s=>!seen.has(s)),random),...shuffled(items.filter(s=>seen.has(s)),random)];
+    if(!split)return pick(sorted).slice(0,4);
+    const short=pick(sorted.slice(0,split)),long=pick(sorted.slice(split));
+    const selected=[...short.slice(0,2),...long.slice(0,2)];
+    if(selected.length<4)selected.push(...pick([...short.slice(2),...long.slice(2)]).slice(0,4-selected.length));
+    return shuffled(selected,random);
+  }
   function setDifficulty(state,value,key=dateKey()){
     if(!Object.hasOwn(DIFFICULTIES,value))return false;
     const current=state.days[key];
@@ -83,6 +99,18 @@
     const review = chars.filter(c=>state.records[c.char] && state.records[c.char].due<=key).sort((a,b)=>state.records[a.char].due.localeCompare(state.records[b.char].due)).slice(0,reviewCount(state)).map(c=>c.char);
     return state.days[key] = {fresh,review,target,sentenceTarget:sentenceLimit(state),passes:{},done:false,sentencePasses:[],created:key};
   }
+  function learnFreely(state,c,key=dateKey()) {
+    if(!chars.some(x=>x.char===c)||state.records[c])return false;
+    const day=plan(state,key);
+    if(day.fresh.includes(c)&&mastered(day,c))return false;
+    state.records[c]={level:0,due:addDays(key,1),learned:key};
+    day.freeLearned=[...new Set([...(day.freeLearned||[]),c])];
+    if(day.fresh.includes(c)){
+      day.passes[c]=REQUIRED_PASSES;
+      day.credited=[...new Set([...(day.credited||[]),c])];
+    }
+    return true;
+  }
   function continueLearning(state,key=dateKey()) {
     const day=plan(state,key);
     if(!day.done)return [];
@@ -135,7 +163,7 @@
     });
     day.credited=[...day.fresh,...day.review];day.done=true; return true;
   }
-  function validState(data){if(data?.version!==1||!data.records||!data.days||typeof data.records!=='object'||typeof data.days!=='object'||Array.isArray(data.records)||Array.isArray(data.days))return false;if(data.settings&&(typeof data.settings!=='object'||Array.isArray(data.settings)||!validDailyCount(data.settings.dailyNewCount)||(data.settings.difficulty!==undefined&&!Object.hasOwn(DIFFICULTIES,data.settings.difficulty))))return false;const isC=c=>chars.some(x=>x.char===c),date=d=>/^\d{4}-\d{2}-\d{2}$/.test(d);if(data.assessment){const a=data.assessment;if(!Array.isArray(a.answers)||a.answers.length>chars.length||!a.answers.every(v=>typeof v==='boolean')||!date(a.started)||typeof a.applied!=='boolean'||(a.completed!==null&&(!date(a.completed)||a.answers.length!==chars.length))||(a.effective!==null&&!date(a.effective))||(a.completed&&!a.effective)||(!a.completed&&(a.applied||a.effective)))return false;}return Object.entries(data.records).every(([c,r])=>isC(c)&&r&&Number.isInteger(r.level)&&r.level>=0&&r.level<=4&&date(r.due)&&date(r.learned))&&Object.entries(data.days).every(([d,v])=>date(d)&&v&&Array.isArray(v.fresh)&&v.fresh.length<=chars.length&&Array.isArray(v.review)&&[...v.fresh,...v.review].every(isC)&&new Set([...v.fresh,...v.review]).size===v.fresh.length+v.review.length&&v.passes&&Object.entries(v.passes).every(([c,n])=>isC(c)&&Number.isInteger(n)&&n>=0&&n<=REQUIRED_PASSES)&&Array.isArray(v.sentencePasses)&&v.sentencePasses.every(s=>sentences.includes(s))&&(v.sentenceCounts===undefined||(v.sentenceCounts&&typeof v.sentenceCounts==='object'&&!Array.isArray(v.sentenceCounts)&&Object.entries(v.sentenceCounts).every(([s,n])=>sentences.includes(s)&&Number.isInteger(n)&&n>=0&&n<=SENTENCE_PASSES)))&&typeof v.done==='boolean'&&(v.credited===undefined||(Array.isArray(v.credited)&&v.credited.every(c=>[...v.fresh,...v.review].includes(c)&&(v.passes[c]||0)>=2)&&new Set(v.credited).size===v.credited.length))&&(v.attempted===undefined||(Array.isArray(v.attempted)&&v.attempted.every(c=>[...v.fresh,...v.review].includes(c))&&new Set(v.attempted).size===v.attempted.length))&&(v.sentenceTarget===undefined||[2,4,8].includes(v.sentenceTarget))&&(v.target===undefined||validDailyCount(v.target)));}
-  const api={sentenceLimit,sentenceReview,SENTENCE_PASSES,sentenceCount,answerSentence,REQUIRED_PASSES,mastered,shuffled,recognitionQueue,DIFFICULTIES,difficulty,reviewCount,setDifficulty,chars,curriculum,sentences,dateKey,addDays,empty,plan,continueLearning,creditReview,eligible,requiredSentences,complete,startAssessment,answerAssessment,finishAssessment,dailyCount,setDailyCount,dayStarted,validDailyCount,MAX_DAILY_COUNT,resetLiteracy,validState};
+  function validState(data){if(data?.version!==1||!data.records||!data.days||typeof data.records!=='object'||typeof data.days!=='object'||Array.isArray(data.records)||Array.isArray(data.days))return false;if(data.settings&&(typeof data.settings!=='object'||Array.isArray(data.settings)||!validDailyCount(data.settings.dailyNewCount)||(data.settings.difficulty!==undefined&&!Object.hasOwn(DIFFICULTIES,data.settings.difficulty))))return false;const isC=c=>chars.some(x=>x.char===c),date=d=>/^\d{4}-\d{2}-\d{2}$/.test(d);if(data.assessment){const a=data.assessment;if(!Array.isArray(a.answers)||a.answers.length>chars.length||!a.answers.every(v=>typeof v==='boolean')||!date(a.started)||typeof a.applied!=='boolean'||(a.completed!==null&&(!date(a.completed)||a.answers.length!==chars.length))||(a.effective!==null&&!date(a.effective))||(a.completed&&!a.effective)||(!a.completed&&(a.applied||a.effective)))return false;}return Object.entries(data.records).every(([c,r])=>isC(c)&&r&&Number.isInteger(r.level)&&r.level>=0&&r.level<=4&&date(r.due)&&date(r.learned))&&Object.entries(data.days).every(([d,v])=>date(d)&&v&&(v.freeLearned===undefined||(Array.isArray(v.freeLearned)&&v.freeLearned.every(isC)&&new Set(v.freeLearned).size===v.freeLearned.length))&&Array.isArray(v.fresh)&&v.fresh.length<=chars.length&&Array.isArray(v.review)&&[...v.fresh,...v.review].every(isC)&&new Set([...v.fresh,...v.review]).size===v.fresh.length+v.review.length&&v.passes&&Object.entries(v.passes).every(([c,n])=>isC(c)&&Number.isInteger(n)&&n>=0&&n<=REQUIRED_PASSES)&&Array.isArray(v.sentencePasses)&&v.sentencePasses.every(s=>sentences.includes(s))&&(v.sentenceCounts===undefined||(v.sentenceCounts&&typeof v.sentenceCounts==='object'&&!Array.isArray(v.sentenceCounts)&&Object.entries(v.sentenceCounts).every(([s,n])=>sentences.includes(s)&&Number.isInteger(n)&&n>=0&&n<=SENTENCE_PASSES)))&&typeof v.done==='boolean'&&(v.credited===undefined||(Array.isArray(v.credited)&&v.credited.every(c=>[...v.fresh,...v.review].includes(c)&&(v.passes[c]||0)>=2)&&new Set(v.credited).size===v.credited.length))&&(v.attempted===undefined||(Array.isArray(v.attempted)&&v.attempted.every(c=>[...v.fresh,...v.review].includes(c))&&new Set(v.attempted).size===v.attempted.length))&&(v.sentenceTarget===undefined||[2,4,8].includes(v.sentenceTarget))&&(v.target===undefined||validDailyCount(v.target)));}
+  const api={learnFreely,sentenceBatch,sentenceLimit,sentenceReview,SENTENCE_PASSES,sentenceCount,answerSentence,REQUIRED_PASSES,mastered,shuffled,recognitionQueue,DIFFICULTIES,difficulty,reviewCount,setDifficulty,chars,curriculum,sentences,dateKey,addDays,empty,plan,continueLearning,creditReview,eligible,requiredSentences,complete,startAssessment,answerAssessment,finishAssessment,dailyCount,setDailyCount,dayStarted,validDailyCount,MAX_DAILY_COUNT,resetLiteracy,validState};
   if(typeof module!=='undefined') module.exports=api; else root.Learning=api;
 })(typeof window!=='undefined'?window:globalThis);

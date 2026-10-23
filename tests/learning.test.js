@@ -235,3 +235,36 @@ console.log('PASS: 统编教材690字数据、初始检查、学习规则、每�
  const s=L.empty(),d=L.plan(s,key);assert.deepEqual(L.sentenceReview(s,d),[],'没有可读句子时不生成未学内容');
  console.log('PASS: 句子难度2/4/8、独立复习、数量不足和当前任务保护');
 }
+
+{
+ const pool=['天。','人！','山','水','天地人','山水田','日月山','天地水'];
+ const batch=L.sentenceBatch(pool,[],()=>0.3);
+ const size=s=>(s.match(/[\u4e00-\u9fff]/g)||[]).length;
+ assert.equal(batch.length,4);
+ assert.equal(batch.filter(s=>size(s)===1).length,2,'每批搭配两句短句');
+ assert.equal(batch.filter(s=>size(s)===3).length,2,'每批搭配两句长句');
+ assert(L.sentenceBatch(pool,batch,()=>0.3).every(s=>!batch.includes(s)),'各长度组优先避开上一批');
+ assert.equal(L.sentenceBatch(['天','天地人','天地山','天地水'],[],()=>0).length,4,'某组不足两句时从另一组补足');
+ assert.deepEqual(L.sentenceBatch([],[],()=>0),[]);
+ assert.equal(new Set(L.sentenceBatch(['天','天','人'],[],()=>0)).size,2);
+}
+
+{
+ const s=L.empty(),d=L.plan(s,key),c=L.chars[100].char;
+ assert(L.learnFreely(s,c,key));
+ assert.deepEqual(d.freeLearned,[c]);
+ assert.equal(s.records[c].learned,key);
+ assert.equal(s.records[c].due,L.addDays(key,1));
+ assert(!L.learnFreely(s,c,key),'重复点击不重复记账');
+ assert(!L.learnFreely(s,'龘',key),'仅允许教材字库');
+ assert(L.validState(JSON.parse(JSON.stringify(s))),'自由学习记录可以备份恢复');
+ assert(!L.plan(s,L.addDays(key,1)).fresh.includes(c),'后续新字跳过已认识字');
+ const current=d.fresh[0];
+ assert(L.learnFreely(s,current,key));
+ assert(L.mastered(d,current),'当前计划里的字也可以直接标为认识');
+ assert(d.credited.includes(current),'完成今日任务时不重复升级复习间隔');
+ assert(L.validState(s));
+ const completed=L.empty(),today=L.plan(completed,key);today.done=true;
+ assert(L.learnFreely(completed,c,key));assert(today.done,'完成后自由学习保留今日完成状态');
+ console.log('PASS: 自由学习记录、去重、备份校验、复习安排和计划兼容');
+}

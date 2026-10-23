@@ -108,3 +108,52 @@ dialog.recognition-dialog{width:min(560px,calc(100% - 24px));max-width:calc(100v
  .recognition-dialog .fine-print,.recognition-dialog .round-label{font-size:12px}
 }
 .account-entry{display:inline-flex;align-items:center;gap:8px}.user-avatar{width:32px;height:32px;object-fit:cover;border-radius:50%;flex-shrink:0}.avatar-placeholder{display:inline-grid;place-items:center;background:#e7eddd}.avatar-profile{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:18px}.avatar-profile .user-avatar{width:64px;height:64px}.avatar-picker{cursor:pointer}.avatar-profile .fine-print{flex-basis:100%}#avatar-canvas{display:block;width:200px;height:200px;margin:20px auto;border:1px solid var(--line);border-radius:8px}.avatar-controls{display:grid;gap:14px}.avatar-controls label{display:flex;align-items:center;gap:16px}.avatar-controls input{flex:1;min-width:0}
+
+.sentence-batch{display:grid;gap:12px;margin:20px 0;padding-left:30px}.sentence-batch li{padding:14px 16px;background:#f6f7ef;border:1px solid var(--line);border-radius:10px;font-family:var(--reading-font);font-size:22px;line-height:1.7;overflow-wrap:anywhere}.sentence-batch li::marker{font-family:inherit;font-size:14px;color:#82956e}
+
+.recognition-dialog .recognition:has(.sentence){padding:clamp(30px,6dvh,56px) 18px;margin-top:20px}
+.recognition-dialog .recognition .sentence{line-height:2}
+.recognition-dialog .recognition:has(.sentence)+.modal-actions{margin-top:22px}
+.recognition-dialog .recognition-actions button{min-height:64px}
+.recognition-dialog .recognition-actions .primary{flex:1.5;font-size:16px;padding:16px 12px}
+dialog.recognition-dialog.floating-controls{bottom:130px;max-height:calc(100dvh - 154px)}
+.recognition-dialog .floating-recognition-actions:popover-open{position:fixed;inset:auto;bottom:max(18px,env(safe-area-inset-bottom));margin:0;display:flex;gap:10px;width:min(360px,calc(100vw - 32px));padding:10px;border:1px solid var(--line);border-radius:16px;background:#fffefa;box-shadow:0 8px 30px #26382730;color:var(--dark)}
+.recognition-dialog .floating-recognition-actions[data-side="left"]{left:max(16px,env(safe-area-inset-left))}
+.recognition-dialog .floating-recognition-actions[data-side="right"]{right:max(16px,env(safe-area-inset-right))}
+.recognition-dialog .floating-recognition-actions button{flex:1;min-width:0;white-space:normal}
+@media(max-height:420px) and (min-width:480px){
+ dialog.recognition-dialog.floating-controls{bottom:96px;max-height:calc(100dvh - 116px)}
+ .recognition-dialog .floating-recognition-actions:popover-open{flex-direction:row;bottom:10px}
+}
+@media(max-height:420px) and (min-width:480px){
+ .recognition-dialog .recognition-actions button{min-height:48px}
+ .recognition-dialog .recognition-actions .primary{flex:1.5;padding:12px 10px;font-size:14px}
+}
+@media(max-height:600px){
+ .recognition-dialog .recognition:has(.sentence){padding:22px 14px;margin-top:12px}
+ .recognition-dialog .recognition:has(.sentence)+.modal-actions{margin-top:16px}
+}
+@media(max-height:420px) and (min-width:480px){
+ .recognition-dialog .recognition:has(.sentence){padding:18px 12px;margin:0;align-self:center}
+ .recognition-dialog .recognition:has(.sentence)+.modal-actions{margin-top:0}
+}
+
+/* Keep the library mode and its controls together with consistent breathing room. */
+.library-workspace{padding:20px;border:1px solid transparent;border-radius:20px;margin-bottom:32px;background:transparent;transition:background-color .2s,border-color .2s}
+.library-workspace .free-learning-panel{margin:0 0 24px}
+.free-learning-panel h3{display:flex;align-items:center;gap:12px}
+.free-learning-panel h3 span{font-size:12px;font-weight:500;color:var(--muted)}
+.library-workspace.is-free-learning{background:#f1edf8;border-color:#ded4ee}
+.is-free-learning .free-learning-panel{background:#faf7ff;border-color:#ded4ee}
+.is-free-learning .free-learning-panel h3,.is-free-learning .free-learning-panel h3 span{color:#755691}
+.is-free-learning .free-learning-panel .secondary{background:#ece3f6;border-color:#d6c5e8;color:#684783}
+.is-free-learning .filter.active{background:#e8ddf3;color:#684783;border-color:#d6c5e8}
+.is-free-learning .library-cell{background:#fdfbff;border-color:#e2d9ec}
+.is-free-learning .library-cell:hover{background:#eee5f8;border-color:#b9a1d1}
+.is-free-learning .library-cell.known{background:#e8f0e1;border-color:#d3dfc9}
+@media(max-width:600px){.library-workspace{padding:12px;border-radius:16px}.library-workspace .free-learning-panel{margin-bottom:20px}}
+.free-char-browser{background:#faf7ff;border:1px solid #e2d9ec;border-radius:16px;padding:16px}
+.free-char-navigation{display:flex;justify-content:space-between;gap:12px;margin:20px 0 12px}
+.free-char-browser .modal-actions{flex-wrap:wrap}
+.free-char-browser .primary{background:#755691}
+.free-char-browser button:disabled{opacity:.45;cursor:default}
