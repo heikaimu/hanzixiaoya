@@ -146,7 +146,6 @@ import { installAvatar } from './avatar.mjs';
     if(phase==='review'&&!queue.length){L.creditReview(state,key,reviewChars);save();render();open(head('这组复习完成')+'<div class="progress-track"><i style="width:100%"></i></div><p>这组 '+reviewChars.length+' 个字都过关了，下次复习已安排好。</p><div class="modal-actions"><button class="secondary" data-action="close">休息一下</button><button class="primary" data-action="review-begin">继续复习下一组 →</button></div>');return;}
     if(phase==='char'&&!queue.length){phase='sentence';queue=L.requiredSentences(state,day).filter(s=>!day.sentencePasses.includes(s));}
     if(!queue.length){if(L.complete(state,key)){save();render();success();}else toast('还有认读任务未完成，请继续练习。');return;}
-    if(right&&!lockConfirmation())return;
     const c=queue[0],isChar=phase!=='sentence';
     const group=activeGroup;
     const total=isChar?group.length:L.requiredSentences(state,day).length;
@@ -157,6 +156,7 @@ import { installAvatar } from './avatar.mjs';
   }
   function answer(right){
     if(!queue.length)return;rollover();if(!queue.length)return;
+    if(right&&!lockConfirmation())return;
     const c=queue[0],isChar=phase!=='sentence';
     if(!right){
       if(isChar){day.passes[c]=0;day.failed=day.failed||{};day.failed[c]=true;}else{day.sentenceCounts=day.sentenceCounts||{};day.sentenceCounts[c]=0;}
