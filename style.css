@@ -157,3 +157,5 @@ dialog.recognition-dialog.floating-controls{bottom:130px;max-height:calc(100dvh 
 .free-char-browser .modal-actions{flex-wrap:wrap}
 .free-char-browser .primary{background:#755691}
 .free-char-browser button:disabled{opacity:.45;cursor:default}
+
+.daily-actions{display:flex;flex-wrap:wrap;gap:12px;position:relative;z-index:1}.hero-copy{flex:1;min-width:0}.daily-actions button{white-space:nowrap}@media(max-width:750px){.daily-actions{flex-direction:column;align-items:flex-start}.daily-actions button{min-width:180px}}

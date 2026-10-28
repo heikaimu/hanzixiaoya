@@ -116,7 +116,7 @@
     if(!day.done)return [];
     const fresh=chars.filter(c=>!state.records[c.char]&&!day.fresh.includes(c.char)).slice(0,dailyCount(state)).map(c=>c.char);
     if(!fresh.length)return [];
-    day.credited=[...new Set([...(day.credited||[]),...day.fresh,...day.review])];
+    day.credited=[...new Set([...(day.credited||[]),...day.fresh,...day.review.filter(c=>mastered(day,c))])];
     day.fresh.push(...fresh);day.done=false;day.sentenceTarget=sentenceLimit(state);
     return fresh;
   }
@@ -155,13 +155,12 @@
   function complete(state,key) {
     const day=plan(state,key);
     if(day.done) return true;
-    if(![...day.fresh,...day.review].every(c=>mastered(day,c))) return false;
-    if(!requiredSentences(state,day).every(s=>day.sentencePasses.includes(s))) return false;
-    [...day.fresh,...day.review].filter(c=>!(day.credited||[]).includes(c)).forEach(c=>{
+    if(!day.fresh.every(c=>mastered(day,c))) return false;
+    [...day.fresh,...day.review].filter(c=>mastered(day,c)&&!(day.credited||[]).includes(c)).forEach(c=>{
       const old=state.records[c]; const level=old && !day.failed?.[c] ? Math.min(old.level+1,4) : 0;
       state.records[c]={level,due:addDays(key,intervals[level]),learned:old?.learned||key};
     });
-    day.credited=[...day.fresh,...day.review];day.done=true; return true;
+    day.credited=[...new Set([...(day.credited||[]),...day.fresh,...day.review.filter(c=>mastered(day,c))])];day.done=true; return true;
   }
   function validState(data){if(data?.version!==1||!data.records||!data.days||typeof data.records!=='object'||typeof data.days!=='object'||Array.isArray(data.records)||Array.isArray(data.days))return false;if(data.settings&&(typeof data.settings!=='object'||Array.isArray(data.settings)||!validDailyCount(data.settings.dailyNewCount)||(data.settings.difficulty!==undefined&&!Object.hasOwn(DIFFICULTIES,data.settings.difficulty))))return false;const isC=c=>chars.some(x=>x.char===c),date=d=>/^\d{4}-\d{2}-\d{2}$/.test(d);if(data.assessment){const a=data.assessment;if(!Array.isArray(a.answers)||a.answers.length>chars.length||!a.answers.every(v=>typeof v==='boolean')||!date(a.started)||typeof a.applied!=='boolean'||(a.completed!==null&&(!date(a.completed)||a.answers.length!==chars.length))||(a.effective!==null&&!date(a.effective))||(a.completed&&!a.effective)||(!a.completed&&(a.applied||a.effective)))return false;}return Object.entries(data.records).every(([c,r])=>isC(c)&&r&&Number.isInteger(r.level)&&r.level>=0&&r.level<=4&&date(r.due)&&date(r.learned))&&Object.entries(data.days).every(([d,v])=>date(d)&&v&&(v.freeLearned===undefined||(Array.isArray(v.freeLearned)&&v.freeLearned.every(isC)&&new Set(v.freeLearned).size===v.freeLearned.length))&&Array.isArray(v.fresh)&&v.fresh.length<=chars.length&&Array.isArray(v.review)&&[...v.fresh,...v.review].every(isC)&&new Set([...v.fresh,...v.review]).size===v.fresh.length+v.review.length&&v.passes&&Object.entries(v.passes).every(([c,n])=>isC(c)&&Number.isInteger(n)&&n>=0&&n<=REQUIRED_PASSES)&&Array.isArray(v.sentencePasses)&&v.sentencePasses.every(s=>sentences.includes(s))&&(v.sentenceCounts===undefined||(v.sentenceCounts&&typeof v.sentenceCounts==='object'&&!Array.isArray(v.sentenceCounts)&&Object.entries(v.sentenceCounts).every(([s,n])=>sentences.includes(s)&&Number.isInteger(n)&&n>=0&&n<=SENTENCE_PASSES)))&&typeof v.done==='boolean'&&(v.credited===undefined||(Array.isArray(v.credited)&&v.credited.every(c=>[...v.fresh,...v.review].includes(c)&&(v.passes[c]||0)>=2)&&new Set(v.credited).size===v.credited.length))&&(v.attempted===undefined||(Array.isArray(v.attempted)&&v.attempted.every(c=>[...v.fresh,...v.review].includes(c))&&new Set(v.attempted).size===v.attempted.length))&&(v.sentenceTarget===undefined||[2,4,8].includes(v.sentenceTarget))&&(v.target===undefined||validDailyCount(v.target)));}
   const api={learnFreely,sentenceBatch,sentenceLimit,sentenceReview,SENTENCE_PASSES,sentenceCount,answerSentence,REQUIRED_PASSES,mastered,shuffled,recognitionQueue,DIFFICULTIES,difficulty,reviewCount,setDifficulty,chars,curriculum,sentences,dateKey,addDays,empty,plan,continueLearning,creditReview,eligible,requiredSentences,complete,startAssessment,answerAssessment,finishAssessment,dailyCount,setDailyCount,dayStarted,validDailyCount,MAX_DAILY_COUNT,resetLiteracy,validState};

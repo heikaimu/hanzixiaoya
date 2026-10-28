@@ -45,7 +45,7 @@ d=L.plan(s,key);
 assert(L.eligible(s,d).includes('山上有水。'));
 assert(!L.eligible(s,d).includes('我爱妈妈。'));
 for(const c of [...d.fresh,...d.review])d.passes[c]=3;
-assert(!L.complete(s,key),'句子也是当天过关条件');
+assert(L.complete(s,key),'新字学习独立完成，不再要求句子过关');
 d.sentencePasses=L.requiredSentences(s,d);
 assert(L.complete(s,key));
 const before=JSON.stringify(s.records);L.complete(s,key);assert.equal(JSON.stringify(s.records),before,'重复完成不应改变复习日期');
@@ -209,7 +209,7 @@ console.log('PASS: 统编教材690字数据、初始检查、学习规则、每�
  const d=L.plan(s,key);for(const c of [...d.fresh,...d.review])d.passes[c]=L.REQUIRED_PASSES;
  const selected=L.requiredSentences(s,d);
  for(const sentence of selected){assert(!L.answerSentence(d,sentence,true),'听后确认不计数');assert.equal(L.sentenceCount(d,sentence),0);assert(!L.answerSentence(d,sentence),'第一次读对不算过关');}
- assert(!L.complete(s,key),'所有句子只读一次不能完成');
+ assert(L.complete(s,key),'句子认读次数不阻止新字学习完成');
  assert(L.validState(JSON.parse(JSON.stringify(s))),'句子第一次读对进度可保存恢复');
  for(const sentence of selected){assert(L.answerSentence(d,sentence));assert.equal(L.sentenceCount(d,sentence),2);}
  assert(L.complete(s,key));const count=d.sentencePasses.length;L.answerSentence(d,selected[0]);assert.equal(d.sentencePasses.length,count,'重复确认不重复计数');
@@ -267,4 +267,18 @@ console.log('PASS: 统编教材690字数据、初始检查、学习规则、每�
  const completed=L.empty(),today=L.plan(completed,key);today.done=true;
  assert(L.learnFreely(completed,c,key));assert(today.done,'完成后自由学习保留今日完成状态');
  console.log('PASS: 自由学习记录、去重、备份校验、复习安排和计划兼容');
+}
+
+{
+ const s=L.empty();const c=L.chars[0].char;s.records[c]={level:0,due:key,learned:key};
+ const d=L.plan(s,key);for(const c of d.fresh)d.passes[c]=3;
+ const before=JSON.stringify(s.records[c]);
+ assert(L.complete(s,key),'新字完成不依赖旧字复习');
+ assert.equal(JSON.stringify(s.records[c]),before,'未复习的旧字不能升级');
+ assert(!d.credited.includes(c),'未复习的旧字不能计入已结算');
+ assert(L.continueLearning(s,key).length>0,'复习未完成也能继续新字');
+ assert(!d.credited.includes(c),'继续下一组不能提前结算复习字');
+ d.passes[c]=3;L.creditReview(s,key,[c]);
+ assert.equal(s.records[c].level,1,'完成新字后仍可独立结算复习');
+ assert(L.validState(s));
 }

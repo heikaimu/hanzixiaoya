@@ -84,12 +84,13 @@ import { installAvatar } from './avatar.mjs';
     if(view==='today')renderToday(welcome);else if(view==='library')renderLibrary(welcome);else if(view==='review')renderReview(welcome);else renderHistory(welcome);
   }
   function renderToday(welcome){
-    const total=day.fresh.length+day.review.length,passed=count();
-    $('#content').innerHTML=welcome+`<section class="hero"><div class="hero-copy"><span class="pill">🌿 每日识字小计划</span><h2>${day.done?'今天的识字小脚印，完成啦！':'每天 '+(day.target||L.dailyCount(state))+' 个字，<br>长出一点新本领。'}</h2><p>${day.done?'这组已经过关，还想认识更多字，可以继续下一组。':'按自己的节奏，一组一组认识新汉字。'}</p><button class="primary" data-action="${day.done?'continue-learning':'start'}">${day.done?'继续学习下一组':Object.keys(day.passes).length?'继续今日学习':'开始今日学习'} <span>→</span></button></div><div class="hero-art" aria-hidden="true"><div class="sun"></div><div class="hill"></div><div class="hill two"></div><div class="art-card">木</div><div class="art-card two">林</div><div class="art-sprout">🌱</div></div></section>
-    <section class="stats"><div class="stat"><div class="stat-icon">✧</div><div><div class="stat-label">已经认识的汉字</div><div class="stat-number">${totalKnown()}<small>个小伙伴</small></div></div></div><div class="stat"><div class="stat-icon">⚑</div><div><div class="stat-label">连续学习</div><div class="stat-number">${streak()}<small>天</small></div></div></div><div class="stat"><div class="stat-icon daily-progress-icon ${total>0&&passed===total?'is-complete':''}" aria-label="${total>0&&passed===total?'今日汉字全部过关':'今日汉字尚未完成'}">✓</div><div><div class="stat-label">今日汉字进度</div><div class="stat-number">${passed}<small>/ ${total} 字过关</small></div></div></div></section>
+    const total=day.fresh.length,passed=day.fresh.filter(c=>L.mastered(day,c)).length;
+    const canReview=Object.keys(state.records).length>0,canRead=L.eligible(state,day).length>0;
+    $('#content').innerHTML=welcome+`<section class="hero"><div class="hero-copy"><span class="pill">🌿 每日识字小计划</span><h2>${day.done?'今天的识字小脚印，完成啦！':'每天 '+(day.target||L.dailyCount(state))+' 个字，<br>长出一点新本领。'}</h2><p>${day.done?'这组已经过关，还想认识更多字，可以继续下一组。':'按自己的节奏，一组一组认识新汉字。'}</p><div class="daily-actions"><button class="primary" data-action="${day.done?'continue-learning':'start'}">${day.done?'继续学习下一组':day.fresh.some(c=>day.passes[c]>0)?'继续今日学习':'开始今日学习'} <span>→</span></button><button class="secondary" data-action="review-begin" ${canReview?'':'disabled'}>开始今日复习 <span>→</span></button><button class="secondary" data-action="review-sentences" ${canRead?'':'disabled'}>句子复习 <span>→</span></button></div></div><div class="hero-art" aria-hidden="true"><div class="sun"></div><div class="hill"></div><div class="hill two"></div><div class="art-card">木</div><div class="art-card two">林</div><div class="art-sprout">🌱</div></div></section>
+    <section class="stats"><div class="stat"><div class="stat-icon">✧</div><div><div class="stat-label">已经认识的汉字</div><div class="stat-number">${totalKnown()}<small>个小伙伴</small></div></div></div><div class="stat"><div class="stat-icon">⚑</div><div><div class="stat-label">连续学习</div><div class="stat-number">${streak()}<small>天</small></div></div></div><div class="stat"><div class="stat-icon daily-progress-icon ${total>0&&passed===total?'is-complete':''}" aria-label="${total>0&&passed===total?'今日汉字全部过关':'今日汉字尚未完成'}">✓</div><div><div class="stat-label">今日新字进度</div><div class="stat-number">${passed}<small>/ ${total} 字过关</small></div></div></div></section>
 
     ${day.freeLearned?.length?'<section class="panel"><h3>今日自由学习 <span>'+day.freeLearned.length+' 字</span></h3><div class="review-chips">'+day.freeLearned.map(c=>'<button class="chip" data-char="'+c+'">'+c+'</button>').join('')+'</div></section>':''}
-    ${day.done?'<div class="completion-banner">✓ 今日全部过关 · 明天计划认识 '+L.dailyCount(state)+' 个新朋友</div>':''}`;
+    ${day.done?'<div class="completion-banner">✓ 今日新字已过关 · 明天计划认识 '+L.dailyCount(state)+' 个新朋友</div>':''}`;
   }
 
   function renderLibrary(welcome){
@@ -122,7 +123,7 @@ import { installAvatar } from './avatar.mjs';
     if(next>=0){freeIndex=next;showFreeChar();}
     else open(head('自由学习完成')+'<p>这批汉字都已经认识啦，已记入今日学习记录。</p><div class="modal-actions"><button class="primary" data-action="close">完成</button></div>');
   }
-  function introduction(){open(head('先和新朋友见个面')+`<p>点一个字听一听，和家长一起读。准备好后，开始逐字认读。</p><div class="review-chips">${day.fresh.map(c=>`<button class="chip" data-speak="${c+'，'+info(c).word}">${c}</button>`).join('')}</div><p class="fine-print">${day.review.length?'还有 '+day.review.length+' 个旧字要复习。<br>':''}首轮顺序，之后打乱；每字独立读对 3 次过关。</p><div class="modal-actions"><button class="primary" data-action="begin">准备好了，开始认读 →</button></div>`);}
+  function introduction(){open(head('先和新朋友见个面')+`<p>点一个字听一听，和家长一起读。准备好后，开始逐字认读。</p><div class="review-chips">${day.fresh.map(c=>`<button class="chip" data-speak="${c+'，'+info(c).word}">${c}</button>`).join('')}</div><p class="fine-print">本入口只学习新字，旧字和句子可在首页单独复习。<br>首轮顺序，之后打乱；每字独立读对 3 次过关。</p><div class="modal-actions"><button class="primary" data-action="begin">准备好了，开始认读 →</button></div>`);}
   function renderReview(welcome){
     const pending=day.review.filter(c=>!L.mastered(day,c)),known=Object.keys(state.records),sentencePool=L.eligible(state,day);
     $('#content').innerHTML=welcome+`<section class="panel"><h3>汉字复习 <span>已学 ${known.length} 字</span></h3><p>每组最多 ${L.reviewCount(state)} 个字，每字独立认对 3 次过关。</p><div class="review-chips">${(pending.length?pending:known).slice(0,10).map(c=>`<button class="chip" data-char="${c}">${c}</button>`).join('')}</div><div class="panel-bottom"><span>优先复习到期字，随时可以练习</span><button class="primary" data-action="review-begin" ${known.length?'':'disabled'}>开始汉字复习 →</button></div></section><section class="panel review-extra"><h3>句子复习 <span>可读 ${sentencePool.length} 句</span></h3><p>每组 4 句，长短搭配，可先预览、换一批，再逐句复习。每句独立读对 2 次过关。只使用已认识的字，不用先完成今日新字。</p><div class="sentence-preview">${sentencePool[0]||'先认识一些汉字，就能开始读句子啦。'}</div><div class="panel-bottom"><span>只使用已认识的字 · 不足 4 句时按实际数量</span><button class="primary" data-action="review-sentences" ${sentencePool.length?'':'disabled'}>开始句子复习 →</button></div></section>`;
@@ -139,12 +140,12 @@ import { installAvatar } from './avatar.mjs';
     if(!reviewChars.length){practiceBegin('all');return;}
     activeGroup=[...reviewChars];startRound();phase='review';next();
   }
-  function begin(){activeGroup=[...day.fresh,...day.review].filter(c=>!(day.credited||[]).includes(c));startRound();phase='char';next();}
+  function begin(){practice=null;activeGroup=[...day.fresh].filter(c=>!(day.credited||[]).includes(c));startRound();phase='char';next();}
   function next(){
     assisted=false;if('speechSynthesis' in window)speechSynthesis.cancel();
     if(phase!=='sentence'&&!queue.length){queue=L.recognitionQueue(day,activeGroup);if(queue.length){roundNumber=Math.min(L.REQUIRED_PASSES,roundNumber+1);}}
     if(phase==='review'&&!queue.length){L.creditReview(state,key,reviewChars);save();render();open(head('这组复习完成')+'<div class="progress-track"><i style="width:100%"></i></div><p>这组 '+reviewChars.length+' 个字都过关了，下次复习已安排好。</p><div class="modal-actions"><button class="secondary" data-action="close">休息一下</button><button class="primary" data-action="review-begin">继续复习下一组 →</button></div>');return;}
-    if(phase==='char'&&!queue.length){phase='sentence';queue=L.requiredSentences(state,day).filter(s=>!day.sentencePasses.includes(s));}
+    if(phase==='char'&&!queue.length){if(L.complete(state,key)){save();render();success();}return;}
     if(!queue.length){if(L.complete(state,key)){save();render();success();}else toast('还有认读任务未完成，请继续练习。');return;}
     const c=queue[0],isChar=phase!=='sentence';
     const group=activeGroup;
@@ -170,7 +171,7 @@ import { installAvatar } from './avatar.mjs';
     if(phase==='review')L.creditReview(state,key,reviewChars);
     save();render();next();
   }
-  function success(){open(head('今日学习完成')+`<div class="progress-track"><i style="width:100%"></i></div><div class="success-art">🌱</div><h2 class="success-title">小小的你，又长大了一点！</h2><p class="fine-print">${day.fresh.length} 个新字 · ${day.review.length} 个复习字 · ${day.sentencePasses.length} 句小句子<br>全部独立认读过关。还想学的话，可以继续下一组新字。</p><div class="modal-actions"><button class="secondary" data-action="close">收好今天的小成就 ✓</button><button class="primary" data-action="continue-learning">继续学习下一组 →</button></div>`);}
+  function success(){open(head('今日学习完成')+`<div class="progress-track"><i style="width:100%"></i></div><div class="success-art">🌱</div><h2 class="success-title">小小的你，又长大了一点！</h2><p class="fine-print">${day.fresh.length} 个新字全部独立认读过关。<br>旧字和句子可以从首页分别开始复习。还想学的话，可以继续下一组新字。</p><div class="modal-actions"><button class="secondary" data-action="close">收好今天的小成就 ✓</button><button class="primary" data-action="continue-learning">继续学习下一组 →</button></div>`);}
   function start(){rollover();if(day.done){open(head('今天已经全部过关')+'<p>可以继续学习下一组新字，也可以再次测试今天的新字、复习字和小句子。本次测试不计入学习进度，也不会改变复习安排。</p><div class="modal-actions"><button class="secondary" data-action="practice-begin">再次测试</button><button class="primary" data-action="continue-learning">继续学习下一组 →</button></div>');}else introduction();}
   function previewSentenceBatch(){
     rollover();practice=null;
